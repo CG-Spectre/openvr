@@ -14,7 +14,7 @@ int main(int argc, char* argv[]) {
         return 1;
     }
 
-    SDL_Window* window = SDL_CreateWindow("SDL3 Window", 640, 480, SDL_WINDOW_RESIZABLE);
+    SDL_Window* window = SDL_CreateWindow("OpenVR", 640, 480, SDL_WINDOW_RESIZABLE);
     if (!window) {
         std::cerr << "Window creation failed: " << SDL_GetError() << std::endl;
         SDL_Quit();
