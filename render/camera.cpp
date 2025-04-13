@@ -23,7 +23,7 @@ void camera::addObject(renderableRT *object) {
 
 void camera::render(SDL_Renderer *renderer) {
     Vector3d rayPoint = this->pos.pose;
-    Vector3d rayDirection = Vector3d(0, -0.12, 1).normalize();
+    Vector3d rayDirection = Vector3d(0.12, -0.12, 1).normalize();
 
     renderNode *currentNode = stack.getFirst();
     while (currentNode != nullptr) {

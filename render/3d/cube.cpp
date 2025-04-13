@@ -140,7 +140,8 @@ float clip(float n, float lower, float upper) {
     return std::max(lower, std::min(n, upper));
 }
 bool cube::renderRay(SDL_Renderer *renderer, Vector3d point, Vector3d direction) {
-    Face3d face = *faces[2];
+    int faceIndex = 4;
+    Face3d face = *faces[faceIndex];
     Vector3d p1 = *face.getVertices()->at(0)->getPose() + this->pos.pose;
     Vector3d p2 = *face.getVertices()->at(1)->getPose() + this->pos.pose;
     Vector3d p3 = *face.getVertices()->at(2)->getPose() + this->pos.pose;
@@ -153,19 +154,27 @@ bool cube::renderRay(SDL_Renderer *renderer, Vector3d point, Vector3d direction)
     }
     float t = normal.dot(p1 - point) / denom;
     Vector3d intersection = point + (direction*t);
-    Vector3d axis = normal.cross(Vector3d(0, -1, 0)).normalize();
-    double angle = acos(  clip(normal.dot(Vector3d(0, -1, 0)), -1, 1));
+    Vector3d axis = normal.cross(Vector3d(0, 1, 0)).normalize();
+    if (std::isnan(axis.x) || std::isnan(axis.y) || std::isnan(axis.z)) {
+        axis = Vector3d(0, 1, 0);
+    }
+    //axis = Vector3d(0, 1, 0);
+    double angle = acos(  clip(normal.dot(Vector3d(0, 1, 0)), -1, 1));
     for (int i = 0; i < face.getVertices()->size(); i++) {
-        Vertex3d* vertex = faces[0]->getVertices()->at(i);
-        Vector3d v = *vertex->getPose() - intersection;
+        Vertex3d* vertex = faces[faceIndex]->getVertices()->at(i);
+        Vector3d v = *vertex->getPose() + this->pos.pose - intersection;
         Vector3d term1 = v * cos(angle);
         Vector3d term2 = axis.cross(v) * sin(angle);
         Vector3d term3 = axis * (axis.dot(v)) * (1 - cos(angle));
         Vector3d rotated = term1 + term2 + term3 + intersection;
         //rotated = *vertex->getPose();
-        rotated = normal;
+        //rotated = axis;
+        //std::cout << v.x << " " << v.y << " " << v.z << std::endl;
+        //rotated = v + intersection;
         std::cout << rotated.x << " " << rotated.y << " " << rotated.z << std::endl;
+
     }
+    std::cout << intersection.x << " " << intersection.y << " " << intersection.z << std::endl;
     //std::cout << intersection.x << ", " << intersection.y << ", " << intersection.z << std::endl;
     /*std::cout << p1.x << ", " << p1.y << ", " << p1.z << std::endl;
     std::cout << p2.x << ", " << p2.y << ", " << p2.z << std::endl;
