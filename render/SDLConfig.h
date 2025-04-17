@@ -11,6 +11,7 @@ class SDLConfig {
     public:
     static int *WINDOW_WIDTH;
     static int *WINDOW_HEIGHT;
+    static float FOCAL_LENGTH;
 };
 
 

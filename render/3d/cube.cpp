@@ -6,7 +6,9 @@
 
 #include <iostream>
 #include "cmath"
+#include "renderUtil.h"
 #include "Vertex3d.h"
+#include "../camera.h"
 #include "../SDLConfig.h"
 Face3d f1;
 Face3d f2;
@@ -62,8 +64,8 @@ cube::cube(Pose3d pos, float edgeLength) {
 
     f1.addVertex(&v1);
     f1.addVertex(&v2);
-    f1.addVertex(&v3);
     f1.addVertex(&v4);
+    f1.addVertex(&v3);
 
     f2.addVertex(&v5);
     f2.addVertex(&v6);
@@ -72,16 +74,16 @@ cube::cube(Pose3d pos, float edgeLength) {
 
     f3.addVertex(&v1);
     f3.addVertex(&v2);
-    f3.addVertex(&v5);
     f3.addVertex(&v6);
+    f3.addVertex(&v5);
 
     f4.addVertex(&v1);
     f4.addVertex(&v3);
     f4.addVertex(&v5);
     f4.addVertex(&v7);
 
-    f5.addVertex(&v4);
     f5.addVertex(&v3);
+    f5.addVertex(&v4);
     f5.addVertex(&v8);
     f5.addVertex(&v7);
 
@@ -103,12 +105,12 @@ cube::cube(Pose3d pos, float edgeLength) {
 void cube::render(SDL_Renderer *renderer) {
     SDL_SetRenderDrawColor(renderer, 255, 0, 0, 255);  // Black
     //std::cout << faces[0]->getVertices()->size() << std::endl;
-    for (int i = 0; i < faces[0]->getVertices()->size(); i++) {
+    /*for (int i = 0; i < faces[2]->getVertices()->size(); i++) {
 
         float yaw = 0;
         float pitch = 0;
         float roll = 0;
-        Vertex3d* vertex = faces[0]->getVertices()->at(i);
+        Vertex3d* vertex = faces[2]->getVertices()->at(i);
         float x = vertex->getPose()->x + this->pos.pose.x;
         float y = vertex->getPose()->y + this->pos.pose.y;
         float z = vertex->getPose()->z + this->pos.pose.z;
@@ -130,56 +132,64 @@ void cube::render(SDL_Renderer *renderer) {
         float y2d = y * 1000.0 / z;
         //std::cout << "x2d: " << x2d << std::endl;
         //std::cout << "y2d: " << y2d << std::endl;
-        SDL_RenderPoint(renderer,(((float)*SDLConfig::WINDOW_WIDTH)/2)+x2d, (((float)*SDLConfig::WINDOW_HEIGHT)/2)+y2d);
+        SDL_RenderPoint(renderer,(((float)*SDLConfig::WINDOW_WIDTH)/2)+x2d, (((float)*SDLConfig::WINDOW_HEIGHT)/2)-y2d);
     }
 
-    //SDL_RenderLine(renderer, 0, 0, 255, 255);
+    //SDL_RenderLine(renderer, 0, 0, 255, 255);*/
 
 }
 float clip(float n, float lower, float upper) {
     return std::max(lower, std::min(n, upper));
 }
-bool cube::renderRay(SDL_Renderer *renderer, Vector3d point, Vector3d direction) {
-    int faceIndex = 4;
-    Face3d face = *faces[faceIndex];
-    Vector3d p1 = *face.getVertices()->at(0)->getPose() + this->pos.pose;
-    Vector3d p2 = *face.getVertices()->at(1)->getPose() + this->pos.pose;
-    Vector3d p3 = *face.getVertices()->at(2)->getPose() + this->pos.pose;
-    Vector3d v1 = p2 - p1;
-    Vector3d v2 = p3 - p1;
-    Vector3d normal = v1.cross(v2).normalize();
-    float denom = normal.dot(direction);
-    if (std::abs(denom) < 1e-6) {
-        return false;
-    }
-    float t = normal.dot(p1 - point) / denom;
-    Vector3d intersection = point + (direction*t);
-    Vector3d axis = normal.cross(Vector3d(0, 1, 0)).normalize();
-    if (std::isnan(axis.x) || std::isnan(axis.y) || std::isnan(axis.z)) {
-        axis = Vector3d(0, 1, 0);
-    }
-    //axis = Vector3d(0, 1, 0);
-    double angle = acos(  clip(normal.dot(Vector3d(0, 1, 0)), -1, 1));
-    for (int i = 0; i < face.getVertices()->size(); i++) {
-        Vertex3d* vertex = faces[faceIndex]->getVertices()->at(i);
-        Vector3d v = *vertex->getPose() + this->pos.pose - intersection;
-        Vector3d term1 = v * cos(angle);
-        Vector3d term2 = axis.cross(v) * sin(angle);
-        Vector3d term3 = axis * (axis.dot(v)) * (1 - cos(angle));
-        Vector3d rotated = term1 + term2 + term3 + intersection;
-        //rotated = *vertex->getPose();
-        //rotated = axis;
-        //std::cout << v.x << " " << v.y << " " << v.z << std::endl;
-        //rotated = v + intersection;
-        std::cout << rotated.x << " " << rotated.y << " " << rotated.z << std::endl;
+bool cube::renderRay(SDL_Renderer *renderer, camera* camera, Vector3d point, Vector3d direction) {
+    bool rendered = false;
+    //direction = direction.normalize();
+    //std::cout << direction.x << " " << direction.y << " " << direction.z << std::endl;
+    for (int i = 0; i < 1; i++) {
 
-    }
-    std::cout << intersection.x << " " << intersection.y << " " << intersection.z << std::endl;
-    //std::cout << intersection.x << ", " << intersection.y << ", " << intersection.z << std::endl;
-    /*std::cout << p1.x << ", " << p1.y << ", " << p1.z << std::endl;
-    std::cout << p2.x << ", " << p2.y << ", " << p2.z << std::endl;
-    std::cout << p3.x << ", " << p3.y << ", " << p3.z << std::endl;*/
-    return true;
+        int faceIndex = 2;
+        Face3d face = *faces[faceIndex];
+        Vector3d p1 = *face.getVertices()->at(0)->getPose() + this->pos.pose;
+        Vector3d p2 = *face.getVertices()->at(1)->getPose() + this->pos.pose;
+        Vector3d p3 = *face.getVertices()->at(2)->getPose() + this->pos.pose;
+        Vector3d v1 = p2 - p1;
+        Vector3d v2 = p3 - p1;
+        Vector3d normal = v1.cross(v2).normalize();
 
+        float denom = normal.dot(direction);
+        if (std::abs(denom) < 1e-6) {
+            continue;
+        }
+        float t = normal.dot(p1 - point) / denom;
+        Vector3d intersection = point + (direction*t);
+        Vector3d target(0, 1, 0);
+        Vector3d axis = normal.cross(target).normalize();
+        if (std::isnan(axis.x) || std::isnan(axis.y) || std::isnan(axis.z)) {
+            axis = target;
+        }
+        //axis = Vector3d(0, 1, 0);
+        double angle = acos(  clip(normal.dot(target), -1, 1));
+        std::vector<Vector3d> rotatedVertices;
+
+        for (int i = 0; i < face.getVertices()->size(); i++) {
+            Vertex3d* vertex = faces[faceIndex]->getVertices()->at(i);
+            Vector3d v = *vertex->getPose() + this->pos.pose - intersection;
+            Vector3d term1 = v * cos(angle);
+            Vector3d term2 = axis.cross(v) * sin(angle);
+            Vector3d term3 = axis * (axis.dot(v)) * (1 - cos(angle));
+            Vector3d rotated = term1 + term2 + term3 + intersection;
+            //std::cout << (rotated).x << " " << (rotated).y << " " << (rotated).z << std::endl;
+            rotatedVertices.push_back(rotated);
+        }
+
+        //std::cout << (intersection).x << " " << (intersection).y << " " << (intersection).z << std::endl;
+        if (!renderUtil::isInside(intersection, rotatedVertices)) {
+            continue;
+        }
+        //render
+        SDL_SetRenderDrawColor(renderer, 255, 255, 255, 255);
+        renderUtil::render3dPoint(renderer, camera, intersection);
+        rendered = true;
+    }
+    return rendered;
 }
-

@@ -6,3 +6,4 @@
 
 int* SDLConfig::WINDOW_WIDTH = nullptr;
 int* SDLConfig::WINDOW_HEIGHT = nullptr;
+float SDLConfig::FOCAL_LENGTH = 1000.0f;

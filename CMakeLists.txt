@@ -3,6 +3,8 @@ project(openvr)
 
 set(CMAKE_CXX_STANDARD 20)
 add_subdirectory(vendored/SDL EXCLUDE_FROM_ALL)
+find_package(OpenCL REQUIRED)
+include_directories(${OpenCL_INCLUDE_DIRS})
 add_executable(openvr main.cpp
         render/renderStack.cpp
         render/renderStack.h
@@ -27,6 +29,9 @@ add_executable(openvr main.cpp
         render/SDLConfig.cpp
         render/SDLConfig.h
         render/renderableRT.cpp
-        render/renderableRT.h)
-target_link_libraries(openvr PRIVATE SDL3::SDL3)
-
+        render/renderableRT.h
+        render/3d/renderUtil.cpp
+        render/3d/renderUtil.h
+        render/GPU/gpu.cpp
+        render/GPU/gpu.h)
+target_link_libraries(openvr PRIVATE SDL3::SDL3 ${OpenCL_LIBRARIES})

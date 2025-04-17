@@ -8,10 +8,12 @@
 #include "../Vector3d.h"
 
 
+class camera;
+
 class renderableRT : public renderable {
 public:
     virtual ~renderableRT() = default;
-    virtual bool renderRay(SDL_Renderer *renderer, Vector3d point, Vector3d direction) = 0;
+    virtual bool renderRay(SDL_Renderer *renderer, camera* camera, Vector3d point, Vector3d direction) = 0;
 };
 
 

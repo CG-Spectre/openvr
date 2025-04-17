@@ -10,10 +10,15 @@
 #include "../../Pose3d.h"
 
 
+class camera;
+
 class cube : public renderableRT {
     public:
     void render(SDL_Renderer *renderer) override;
-    bool renderRay(SDL_Renderer *renderer, Vector3d point, Vector3d direction) override;
+
+
+
+    bool renderRay(SDL_Renderer *renderer, camera* camera, Vector3d point, Vector3d direction) override;
     cube(Pose3d pos, float edgeLength);
     std::vector<Face3d*> faces;
     private:

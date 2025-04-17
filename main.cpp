@@ -7,6 +7,7 @@
 #include "render/renderStack.h"
 #include "render/SDLConfig.h"
 #include "render/3d/cube.h"
+#include "render/GPU/gpu.h"
 int width, height;
 int main(int argc, char* argv[]) {
     if (SDL_Init(SDL_INIT_VIDEO) < 0) {
@@ -27,7 +28,7 @@ int main(int argc, char* argv[]) {
         SDL_Quit();
         return 1;
     }
-
+    gpu::initialize();
     SDL_GetWindowSize(window, &width, &height);
     SDLConfig::WINDOW_WIDTH = &width;
     SDLConfig::WINDOW_HEIGHT = &height;
@@ -35,6 +36,7 @@ int main(int argc, char* argv[]) {
     bool running = true;
     SDL_Event event;
     renderStack stack;
+
     camera cam(Pose3d(0, 0, 0, 0, 0, 0));
     cam.addObject(new cube(Pose3d(Vector3d(0, 0, 8), Vector3d(0, 0, 0)), 2));
     stack.push(new renderNode(&cam));

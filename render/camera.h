@@ -16,6 +16,7 @@ public:
     camera(Pose3d pos);
     void render(SDL_Renderer *renderer) override;
     void addObject(renderableRT *object);
+    Pose3d* getPos();
 private:
     Pose3d pos;
     renderStack stack;
