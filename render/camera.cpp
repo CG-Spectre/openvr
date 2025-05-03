@@ -37,6 +37,7 @@ void camera::render(SDL_Renderer *renderer) {
     Vector3d rayPoint = this->pos.pose;
     float yaw = this->pos.rotation.y;
     float pitch = this->pos.rotation.x;
+    float roll = this->pos.rotation.z;
     /*Vector3d rayDirection = Vector3d(cos(pitch * (M_PI/180.0))*sin(yaw * (M_PI/180.0)), -sin(pitch * (M_PI/180.0)), cos(pitch * (M_PI/180.0))*cos(yaw * (M_PI/180.0)));
     pitch += 5;
     Vector3d rayDirection1 = Vector3d(cos(pitch * (M_PI/180.0))*sin(yaw * (M_PI/180.0)), -sin(pitch * (M_PI/180.0)), cos(pitch * (M_PI/180.0))*cos(yaw * (M_PI/180.0)));
@@ -113,41 +114,32 @@ void camera::render(SDL_Renderer *renderer) {
 
 
     queue.enqueueNDRangeKernel(gpu::renderPixel, cl::NullRange, cl::NDRange(width, height));
-    std::vector<float> data(width*height*4, 0);
-    queue.enqueueReadBuffer(outputBuffer, CL_TRUE, 0, width*height*4*sizeof(int), data.data());
-    SDL_SetRenderDrawColor(renderer, 255, 0, 0, 255);
-    /*renderUtil::render3dPoint(renderer, this, Vector3d(1, 0, 0));
-    renderUtil::render3dPoint(renderer, this, Vector3d(-1, 0, 0));
-    renderUtil::render3dPoint(renderer, this, Vector3d(-1, 0, 0));
-    renderUtil::render3dPoint(renderer, this, Vector3d(1, 0, 0));*/
+    /*std::vector<float> data(width*height*4, 0);
+    queue.enqueueReadBuffer(outputBuffer, CL_TRUE, 0, width*height*4*sizeof(int), data.data());*/
+
+    cl::Buffer out = cl::Buffer(gpu::context, CL_MEM_WRITE_ONLY, width * height * sizeof(uint32_t));
+    gpu::mapTexture.setArg(0, yaw);
+    gpu::mapTexture.setArg(1, pitch);
+    gpu::mapTexture.setArg(2, roll);
+    gpu::mapTexture.setArg(3, width);
+    gpu::mapTexture.setArg(4, height);
+    gpu::mapTexture.setArg(5, outputBuffer);
+    gpu::mapTexture.setArg(6, out);
+    gpu::mapTexture.setArg(7, SDLConfig::FOCAL_LENGTH);
+
+    queue.enqueueNDRangeKernel(gpu::mapTexture, cl::NullRange, cl::NDRange(width, height));
+    uint32_t* pixels = (uint32_t*)malloc(width * height * sizeof(uint32_t));
+    queue.enqueueReadBuffer(out, CL_TRUE, 0, width*height*sizeof(uint32_t), pixels);
+    std::cout << pixels[0] << std::endl;
     int threadAmt = 24;//std::thread::hardware_concurrency()/2;
     int pixelsPerThread = width/threadAmt;
     renderStack stack = this->stack;
     SDL_Texture* tex = SDL_CreateTexture(renderer, SDL_PIXELFORMAT_ARGB8888, SDL_TEXTUREACCESS_STREAMING, width, height);
-    uint32_t* pixels = (uint32_t*)malloc(width * height * sizeof(uint32_t));
-    if (!pixels) {
-        SDL_Log("Failed to allocate pixel buffer");
-    }
-    SDL_Mutex* pixel_mutex = SDL_CreateMutex();
+/*
     for (int i = 0; i < threadAmt; i++) {
         threads.push_back(std::thread([i, width, height, renderer, this, data, pixelsPerThread, pixels, pixel_mutex]() {
             for (int w = pixelsPerThread * i; w < pixelsPerThread * (1 + i); w++) {
                 for (int h = 0; h < height; h++) {
-                    /*renderNode *currentNode = stack.getFirst();
-                    while (currentNode != nullptr) {
-                        //currentNode->getInfo()->render(renderer);
-                        //float yawOffset = (((float)(w-width/2.0))/((float)(width/2.0))) * 45.0;
-                        // pitchOffset = (((float)(h-height/2.0))/((float)(height/2.0))) * 45.0;
-                        //float correctedPitch = pitch + pitchOffset;
-                        //float correctedYaw = yaw + yawOffset;
-                        //Vector3d rayDirection = Vector3d(cos(correctedPitch * (M_PI/180.0))*sin(correctedYaw * (M_PI/180.0)), -sin(correctedPitch * (M_PI/180.0)), cos(correctedPitch * (M_PI/180.0))*cos(correctedYaw * (M_PI/180.0)));
-                        //std::cout << rayDirection.x << ":" << trigData[3*(h*width + w)] << std::endl;
-                       Vector3d rayDirection = Vector3d(trigData[3*(h*width + w)], trigData[3*(h*width + w) + 1], trigData[3*(h*width + w) + 2]);
-                       dynamic_cast<renderableRT *>(currentNode->getInfo())->renderRay(renderer, this, rayPoint, rayDirection);
-                      currentNode = currentNode->getNext();
-                    }*/
-
-
 
                     if (data[4*(h*width + w) + 3] != 0) {
                         Vector3d pointD(data[4*(h*width + w) + 0], data[4*(h*width + w) + 1], data[4*(h*width + w) + 2]);
@@ -165,10 +157,8 @@ void camera::render(SDL_Renderer *renderer) {
     }
     for (int i = 0; i < threads.size(); i++) {
         threads.at(i).join();
-    }
-    SDL_LockMutex(pixel_mutex);
+    }*/
     SDL_UpdateTexture(tex, NULL, pixels, width * sizeof(uint32_t));
-    SDL_UnlockMutex(pixel_mutex);
     SDL_RenderTexture(renderer, tex, NULL, NULL);
     /*std::cout << std::thread::hardware_concurrency() << std::endl;
     int width = *SDLConfig::WINDOW_WIDTH;

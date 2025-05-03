@@ -14,6 +14,7 @@ public:
     static cl::Program program;
     static cl::Kernel precomputeRayTrig;
     static cl::Kernel renderPixel;
+    static cl::Kernel mapTexture;
     static void initialize();
 };
 

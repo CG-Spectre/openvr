@@ -38,7 +38,7 @@ __kernel void precomputeRayTrig(const int width,
     float pitchOffset = ((y-height/2.0)/(height/2.0))*20.0;
     float correctedPitch = pitch + pitchOffset;
     float correctedYaw = yaw + yawOffset;
-    //Vector3d rayDirection = Vector3d(cos(correctedPitch * (M_PI/180.0))*sin(correctedYaw * (M_PI/180.0)), -sin(correctedPitch * (M_PI/180.0)), cos(correctedPitch * (M_PI/180.0))*cos(correctedYaw * (M_PI/180.0)));
+    //Vector3d rayDirection = Vector3d(cos(correctedPitch * (PI/180.0))*sin(correctedYaw * (PI/180.0)), -sin(correctedPitch * (PI/180.0)), cos(correctedPitch * (PI/180.0))*cos(correctedYaw * (PI/180.0)));
     if (x < width && y < height) {
         float sinYaw = sin(correctedYaw*(PI/180.0));
         float sinPitch = sin(correctedPitch*(PI/180.0));
@@ -58,6 +58,41 @@ static inline float3 rotateAroundIntersection(float3 p, float3 pos, float3 inter
     float3 term2 = cross(axis, v) * sin(angle);
     float3 term3 = axis * dot(axis, v) * (1 - cos(angle));
     return term1 + term2 + term3 + intersection;
+}
+__kernel void mapTexture(
+    const float yaw,
+    const float pitch,
+    const float roll,
+    const int width,
+    const int height,
+    __global float* data,
+    __global uint* out,
+    const float focalLength
+){
+    int vx = get_global_id(0);
+    int vy = get_global_id(1);
+    bool render = data[4*(vy*width + vx) + 3];
+    if(render){
+        float3 point = (float3)(data[4*(vy*width + vx) + 0], data[4*(vy*width + vx) + 1], data[4*(vy*width + vx) + 2]);
+        float x = point.x;
+        float y = point.y;
+        float z = point.z;
+        float tmpx = x;
+        x = x*cos(yaw*(PI/180)) - z*sin(yaw*(PI/180));
+        z = z * cos(yaw*(PI/180)) + tmpx * sin(yaw*(PI/180));
+        float tmpy = y;
+        y = y * cos(pitch*(PI/180)) - z * sin(pitch*(PI/180));
+        z = z * cos(pitch*(PI/180)) + tmpy * sin(pitch*(PI/180));
+        tmpx = x;
+        x = x * cos(roll*(PI/180)) - y * sin(roll*(PI/180));
+        y = y * cos(roll*(PI/180)) + tmpx * sin(roll*(PI/180));
+        if (z <= 0) {
+            z = 0.00001;
+        }
+        float x2d = x * focalLength / z;
+        float y2d = y * focalLength / z;
+        out[((int)((((float)height)/2)+y2d))*width + ((int)((((float)width)/2)+x2d))] = 0xFFFFFFFF;
+    }
 }
 __kernel void renderPixel(
     const int width,
