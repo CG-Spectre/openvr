@@ -9,6 +9,7 @@ cl::Device gpu::device;
 cl::Context gpu::context;
 cl::Program gpu::program;
 cl::Kernel gpu::precomputeRayTrig;
+cl::Kernel gpu::renderPixel;
 void gpu::initialize() {
     //std::vector<std::string> kernels = {"precomputeRayTrig"};
     std::ifstream kernelFile("kernel.cl");
@@ -46,5 +47,6 @@ void gpu::initialize() {
     std::cout << "Successfully initialized GPU kernel!" << std::endl;
 
     gpu::precomputeRayTrig = cl::Kernel(program, "precomputeRayTrig");
+    gpu::renderPixel = cl::Kernel(program, "renderPixel");
 
 }

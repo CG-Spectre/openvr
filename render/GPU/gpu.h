@@ -13,6 +13,7 @@ public:
     static cl::Device device;
     static cl::Program program;
     static cl::Kernel precomputeRayTrig;
+    static cl::Kernel renderPixel;
     static void initialize();
 };
 

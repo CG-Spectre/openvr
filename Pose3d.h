@@ -16,6 +16,9 @@ public:
     Pose3d();
     Vector3d rotation;
     Vector3d pose;
+    void setTranslation(Vector3d translation);
+
+    void setRotation(Vector3d translation);
 };
 
 

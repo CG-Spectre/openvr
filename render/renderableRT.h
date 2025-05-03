@@ -6,6 +6,7 @@
 #define RENDERABLERT_H
 #include "renderable.h"
 #include "../Vector3d.h"
+#include "3d/SerializedObject.h"
 
 
 class camera;
@@ -14,6 +15,7 @@ class renderableRT : public renderable {
 public:
     virtual ~renderableRT() = default;
     virtual bool renderRay(SDL_Renderer *renderer, camera* camera, Vector3d point, Vector3d direction) = 0;
+    virtual SerializedObject getSerializedFaces() = 0;
 };
 
 

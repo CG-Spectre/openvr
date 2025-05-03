@@ -55,7 +55,8 @@ int main(int argc, char* argv[]) {
         stack.render(renderer);
 
         SDL_RenderPresent(renderer);
-        SDL_Delay(100);
+        SDL_Delay(0);
+        cam.getPos()->setRotation(Vector3d(0, 0, cam.getPos()->rotation.z + 1));
         // Game loop code goes here
     }
 

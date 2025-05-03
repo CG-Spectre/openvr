@@ -8,9 +8,12 @@
 #include <iostream>
 #include <thread>
 #include <CL/cl.hpp>
+#include <SDL3/SDL_log.h>
+#include <SDL3/SDL_oldnames.h>
 
 #include "renderableRT.h"
 #include "SDLConfig.h"
+#include "3d/renderUtil.h"
 #include "3d/Vertex3d.h"
 #include "GPU/gpu.h"
 
@@ -51,7 +54,7 @@ void camera::render(SDL_Renderer *renderer) {
     t2.join();*/
 
     std::vector<std::thread> threads;
-    int threadAmt = 1;//std::thread::hardware_concurrency()/2;
+
     int width = *SDLConfig::WINDOW_WIDTH;
     int height = *SDLConfig::WINDOW_HEIGHT;
     std::vector<float> trigData(width*height*3, 0);
@@ -64,30 +67,98 @@ void camera::render(SDL_Renderer *renderer) {
     gpu::precomputeRayTrig.setArg(4, outputBuffer);
     queue.enqueueNDRangeKernel(gpu::precomputeRayTrig, cl::NullRange, cl::NDRange(width, height));
     queue.enqueueReadBuffer(outputBuffer, CL_TRUE, 0, width * height * 3 * sizeof(float), trigData.data());
-    /*for (int i = 0; i < 10; ++i) {
-        std::cout << output[i] << " ";
+    //serialize and format all objects in the scene
+    renderStack stack2 = this->stack;
+    std::vector<int> indicesSquared;
+    std::vector<int> indicesOfIndices;
+    std::vector<float> allObjectsSerialized;
+    std::vector<int> allIndicesSerialized;
+    renderNode *currentNode2 = stack2.getFirst();
+    while (currentNode2 != nullptr) {
+        SerializedObject objs = dynamic_cast<renderableRT*>(currentNode2->getInfo())->getSerializedFaces();
+        indicesSquared.push_back(allObjectsSerialized.size());
+        indicesOfIndices.push_back(allIndicesSerialized.size());
+        allObjectsSerialized.reserve(allObjectsSerialized.size() + objs.serialized.size());
+        allObjectsSerialized.insert(allObjectsSerialized.end(), objs.serialized.begin(), objs.serialized.end());
+        allIndicesSerialized.reserve(allIndicesSerialized.size() + objs.indices.size());
+        allIndicesSerialized.insert(allIndicesSerialized.end(), objs.indices.begin(), objs.indices.end());
+        currentNode2 = currentNode2->getNext();
+    }
+    /*for (int i =0; i < allObjectsSerialized.size(); i++) {
+        std::cout << allObjectsSerialized[i] << ", ";
     }
     std::cout << std::endl;*/
+    //end of serialization
+    outputBuffer = cl::Buffer(gpu::context, CL_MEM_WRITE_ONLY, width * height *4* sizeof(float));
+    gpu::renderPixel.setArg(0, width);
+    gpu::renderPixel.setArg(1, height);
+    cl::Buffer trigBuffer(gpu::context, CL_MEM_READ_WRITE | CL_MEM_COPY_HOST_PTR, width * height *3 * sizeof(float), trigData.data());
+    cl::Buffer indicesSquaredBuffer(gpu::context, CL_MEM_READ_WRITE | CL_MEM_COPY_HOST_PTR, indicesSquared.size() * sizeof(int), indicesSquared.data());
+    cl::Buffer indicesOfIndicesBuffer(gpu::context, CL_MEM_READ_WRITE | CL_MEM_COPY_HOST_PTR, indicesOfIndices.size() * sizeof(int), indicesOfIndices.data());
+    cl::Buffer allObjectsSerializedBuffer(gpu::context, CL_MEM_READ_WRITE | CL_MEM_COPY_HOST_PTR, allObjectsSerialized.size() * sizeof(int), allObjectsSerialized.data());
+    cl::Buffer allIndicesSerializedBuffer(gpu::context, CL_MEM_READ_WRITE | CL_MEM_COPY_HOST_PTR, allIndicesSerialized.size() * sizeof(int), allIndicesSerialized.data());
+    gpu::renderPixel.setArg(2, trigBuffer);
+    gpu::renderPixel.setArg(3, indicesSquaredBuffer);
+    gpu::renderPixel.setArg(4, indicesOfIndicesBuffer);
+    gpu::renderPixel.setArg(5, allObjectsSerializedBuffer);
+    gpu::renderPixel.setArg(6, allIndicesSerializedBuffer);
+    gpu::renderPixel.setArg(7, static_cast<int>(indicesSquared.size()));
+    gpu::renderPixel.setArg(8, static_cast<int>(indicesOfIndices.size()));
+    gpu::renderPixel.setArg(9, static_cast<int>(allObjectsSerialized.size()));
+    gpu::renderPixel.setArg(10, static_cast<int>(allIndicesSerialized.size()));
+    gpu::renderPixel.setArg(11, outputBuffer);
+    gpu::renderPixel.setArg(12, rayPoint.x);
+    gpu::renderPixel.setArg(13, rayPoint.y);
+    gpu::renderPixel.setArg(14, rayPoint.z);
+
+
+    queue.enqueueNDRangeKernel(gpu::renderPixel, cl::NullRange, cl::NDRange(width, height));
+    std::vector<float> data(width*height*4, 0);
+    queue.enqueueReadBuffer(outputBuffer, CL_TRUE, 0, width*height*4*sizeof(int), data.data());
+    SDL_SetRenderDrawColor(renderer, 255, 0, 0, 255);
+    /*renderUtil::render3dPoint(renderer, this, Vector3d(1, 0, 0));
+    renderUtil::render3dPoint(renderer, this, Vector3d(-1, 0, 0));
+    renderUtil::render3dPoint(renderer, this, Vector3d(-1, 0, 0));
+    renderUtil::render3dPoint(renderer, this, Vector3d(1, 0, 0));*/
+    int threadAmt = 24;//std::thread::hardware_concurrency()/2;
     int pixelsPerThread = width/threadAmt;
     renderStack stack = this->stack;
+    SDL_Texture* tex = SDL_CreateTexture(renderer, SDL_PIXELFORMAT_ARGB8888, SDL_TEXTUREACCESS_STREAMING, width, height);
+    uint32_t* pixels = (uint32_t*)malloc(width * height * sizeof(uint32_t));
+    if (!pixels) {
+        SDL_Log("Failed to allocate pixel buffer");
+    }
+    SDL_Mutex* pixel_mutex = SDL_CreateMutex();
     for (int i = 0; i < threadAmt; i++) {
-        threads.push_back(std::thread([i, width, height, &stack, renderer, rayPoint, this, yaw, pitch, pixelsPerThread, trigData]() {
-            for (int w = 0; w < pixelsPerThread * (1 + i); w++) {
+        threads.push_back(std::thread([i, width, height, renderer, this, data, pixelsPerThread, pixels, pixel_mutex]() {
+            for (int w = pixelsPerThread * i; w < pixelsPerThread * (1 + i); w++) {
                 for (int h = 0; h < height; h++) {
-                    renderNode *currentNode = stack.getFirst();
+                    /*renderNode *currentNode = stack.getFirst();
                     while (currentNode != nullptr) {
                         //currentNode->getInfo()->render(renderer);
-                        /*float yawOffset = (((float)(w-width/2.0))/((float)(width/2.0))) * 45.0;
-                        float pitchOffset = (((float)(h-height/2.0))/((float)(height/2.0))) * 45.0;
-                        float correctedPitch = pitch + pitchOffset;
-                        float correctedYaw = yaw + yawOffset;*/
+                        //float yawOffset = (((float)(w-width/2.0))/((float)(width/2.0))) * 45.0;
+                        // pitchOffset = (((float)(h-height/2.0))/((float)(height/2.0))) * 45.0;
+                        //float correctedPitch = pitch + pitchOffset;
+                        //float correctedYaw = yaw + yawOffset;
                         //Vector3d rayDirection = Vector3d(cos(correctedPitch * (M_PI/180.0))*sin(correctedYaw * (M_PI/180.0)), -sin(correctedPitch * (M_PI/180.0)), cos(correctedPitch * (M_PI/180.0))*cos(correctedYaw * (M_PI/180.0)));
                         //std::cout << rayDirection.x << ":" << trigData[3*(h*width + w)] << std::endl;
-                        Vector3d rayDirection = Vector3d(trigData[3*(h*width + w)], trigData[3*(h*width + w) + 1], trigData[3*(h*width + w) + 2]);
-                        dynamic_cast<renderableRT *>(currentNode->getInfo())->renderRay(renderer, this, rayPoint, rayDirection);
-                        currentNode = currentNode->getNext();
+                       Vector3d rayDirection = Vector3d(trigData[3*(h*width + w)], trigData[3*(h*width + w) + 1], trigData[3*(h*width + w) + 2]);
+                       dynamic_cast<renderableRT *>(currentNode->getInfo())->renderRay(renderer, this, rayPoint, rayDirection);
+                      currentNode = currentNode->getNext();
+                    }*/
+
+
+
+                    if (data[4*(h*width + w) + 3] != 0) {
+                        Vector3d pointD(data[4*(h*width + w) + 0], data[4*(h*width + w) + 1], data[4*(h*width + w) + 2]);
+                        Vector2d point = renderUtil::get2dPoint(renderer, this, pointD);
+                        if (point.x > -1 && point.y > -1 && point.x < width && point.y < height) {
+                            pixels[point.y * width + point.x] = 0xFFFFFFFF;
+                        }
+
                     }
 
+                    //SDL_RenderPoint(renderer, pointD.x,  pointD.y);
                 }
             }
         }));
@@ -95,7 +166,10 @@ void camera::render(SDL_Renderer *renderer) {
     for (int i = 0; i < threads.size(); i++) {
         threads.at(i).join();
     }
-
+    SDL_LockMutex(pixel_mutex);
+    SDL_UpdateTexture(tex, NULL, pixels, width * sizeof(uint32_t));
+    SDL_UnlockMutex(pixel_mutex);
+    SDL_RenderTexture(renderer, tex, NULL, NULL);
     /*std::cout << std::thread::hardware_concurrency() << std::endl;
     int width = *SDLConfig::WINDOW_WIDTH;
     int height = *SDLConfig::WINDOW_HEIGHT;
@@ -115,7 +189,6 @@ void camera::render(SDL_Renderer *renderer) {
 
         }
     }*/
-    std::cout << "done" << std::endl;
 
 }
 

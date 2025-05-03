@@ -7,6 +7,7 @@
 #include <iostream>
 #include "cmath"
 #include "renderUtil.h"
+#include "SerializedObject.h"
 #include "Vertex3d.h"
 #include "../camera.h"
 #include "../SDLConfig.h"
@@ -141,10 +142,32 @@ void cube::render(SDL_Renderer *renderer) {
 float clip(float n, float lower, float upper) {
     return std::max(lower, std::min(n, upper));
 }
+SerializedObject cube::getSerializedFaces() {
+    std::vector<float> facesTrulySerialized;
+    std::vector<int> indicesSerialized;
+    SerializedObject output;
+    for (int i = 0; i < faces.size(); i++) {
+        int faceIndex = i;
+        int start = facesTrulySerialized.size();
+        indicesSerialized.push_back(start);
+        for (int k = 0; k < faces[faceIndex]->getVertices()->size(); k++) {
+            Vector3d posNS = *faces[faceIndex]->getVertices()->at(k)->getPose() + this->pos.pose;
+            facesTrulySerialized.push_back(posNS.x);
+            facesTrulySerialized.push_back(posNS.y);
+            facesTrulySerialized.push_back(posNS.z);
+        }
+    }
+    output.serialized = facesTrulySerialized;
+    output.indices = indicesSerialized;
+    return output;
+}
+
 bool cube::renderRay(SDL_Renderer *renderer, camera* camera, Vector3d point, Vector3d direction) {
     bool rendered = false;
     //direction = direction.normalize();
     //std::cout << direction.x << " " << direction.y << " " << direction.z << std::endl;
+    float minX = 100;
+    float minY = 100;
     for (int i = 0; i < 1; i++) {
 
         int faceIndex = 2;
@@ -178,10 +201,10 @@ bool cube::renderRay(SDL_Renderer *renderer, camera* camera, Vector3d point, Vec
             Vector3d term2 = axis.cross(v) * sin(angle);
             Vector3d term3 = axis * (axis.dot(v)) * (1 - cos(angle));
             Vector3d rotated = term1 + term2 + term3 + intersection;
+
             //std::cout << (rotated).x << " " << (rotated).y << " " << (rotated).z << std::endl;
             rotatedVertices.push_back(rotated);
         }
-
         //std::cout << (intersection).x << " " << (intersection).y << " " << (intersection).z << std::endl;
         if (!renderUtil::isInside(intersection, rotatedVertices)) {
             continue;
@@ -191,5 +214,6 @@ bool cube::renderRay(SDL_Renderer *renderer, camera* camera, Vector3d point, Vec
         renderUtil::render3dPoint(renderer, camera, intersection);
         rendered = true;
     }
+
     return rendered;
 }

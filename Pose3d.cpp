@@ -17,4 +17,10 @@ Pose3d::Pose3d(float x, float y, float z, float pitch, float yaw, float roll) {
     this->pose = Vector3d(x, y, z);
     this->rotation = Vector3d(pitch, yaw, roll);
 }
+void Pose3d::setTranslation(Vector3d translation) {
+    this->pose = translation;
+}
+void Pose3d::setRotation(Vector3d rotation) {
+    this->rotation = rotation;
+}
 

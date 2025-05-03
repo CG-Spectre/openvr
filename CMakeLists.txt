@@ -33,5 +33,9 @@ add_executable(openvr main.cpp
         render/3d/renderUtil.cpp
         render/3d/renderUtil.h
         render/GPU/gpu.cpp
-        render/GPU/gpu.h)
+        render/GPU/gpu.h
+        render/3d/SerializedObject.cpp
+        render/3d/SerializedObject.h
+        Vector2d.cpp
+        Vector2d.h)
 target_link_libraries(openvr PRIVATE SDL3::SDL3 ${OpenCL_LIBRARIES})
