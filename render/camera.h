@@ -18,6 +18,8 @@ public:
     void addObject(renderableRT *object);
     Pose3d* getPos();
 private:
+    int prevWidth;
+    int prevHeight;
     Pose3d pos;
     renderStack stack;
 };

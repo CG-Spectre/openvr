@@ -66,11 +66,12 @@ __kernel void mapTexture(
     const int width,
     const int height,
     __global float* data,
-    __global uint* out,
+    __global uchar4* image,
     const float focalLength
 ){
     int vx = get_global_id(0);
     int vy = get_global_id(1);
+    //image[vy*width + vx] = (uchar4)(0, 0, 0, 255);
     bool render = data[4*(vy*width + vx) + 3];
     if(render){
         float3 point = (float3)(data[4*(vy*width + vx) + 0], data[4*(vy*width + vx) + 1], data[4*(vy*width + vx) + 2]);
@@ -91,9 +92,30 @@ __kernel void mapTexture(
         }
         float x2d = x * focalLength / z;
         float y2d = y * focalLength / z;
-        out[((int)((((float)height)/2)+y2d))*width + ((int)((((float)width)/2)+x2d))] = 0xFFFFFFFF;
+        //out[((int))*width + ()] = 0xFFFFFFFF;
+        //write_imageui(out, (int2)((int)((((float)width)/2)+x2d), ((((float)height)/2)+y2d)), (uint4)(255, 255, 255, 255));
+        int px = (int)(width / 2 + x2d);
+        int py = (int)(height / 2 + y2d);
+        if (px >= 0 && px < width && py >= 0 && py < height) {
+            //write_imageui(out, (int2)(px, py), (uint4)(255, 255, 255, 255));
+            //write_imageui(out, (int2)(px, py), (uint4)(0, 255, 255, 255));
+            //printf("Writing white pixel at (%d, %d)\n", px, py);
+            image[py*width + px] = (uchar4)(255, 255, 255, 255);
+        }
+        //image[vy*width + vx] = (uchar4)(0, 0, 255, 255);
+
     }
 }
+__kernel void fillTexture(const int width, const int height, __global uchar4* image) {
+     int x = get_global_id(0);
+     int y = get_global_id(1);
+     if((x % 2 == 0) != (y % 2 == 0)){
+            image[y*width + x] = (uchar4)(255, 255, 255, 255);
+      }else{
+             image[y*width + x] = (uchar4)(0, 0, 255, 255);
+      }
+
+ }
 __kernel void renderPixel(
     const int width,
     const int height,
@@ -109,22 +131,44 @@ __kernel void renderPixel(
     __global float* output,
     const float posX,
     const float posY,
-    const float posZ
+    const float posZ,
+    const float yaw,
+    const float pitch,
+    const float roll,
+    __global uchar4* image,
+    const float focalLength
 ){
     int x = get_global_id(0);
     int y = get_global_id(1);
-    float3 inter;
-    float3 direction = (float3)(
-        trigData[3*(y*width + x)],
-        trigData[3*(y*width + x) + 1],
-        trigData[3*(y*width + x) + 2]
+    float aspect = width/height;
+    float f = 1/tan(((PI/180)*90)/2);
+    float ndc_x = (x + 0.5)/width*2 - 1;
+    float ndc_y = 1 - (y + 0.5)/height*2;
+    float px = ndc_x * aspect;
+    float py = ndc_y;
+    float pz = -3;
+    float cosP = cos((PI/180)*pitch);
+    float sinP = sin((PI/180)*pitch);
+    float cosY = cos((PI/180)*yaw);
+    float sinY = sin((PI/180)*yaw);
+    float3 dir = normalize((float3)(px, py, pz));
+    dir = (float3)(
+                dir.x,
+                dir.y,
+                dir.z
+        );
+    dir = (float3)(
+            dir.x,
+            dir.y * cosP - dir.z * sinP,
+            dir.y * sinP + dir.z * cosP
     );
-    /*direction = (float3)(
-            0.6,
-            0,
-            1
-        );*/
-    direction = normalize(direction);
+   dir = (float3)(
+            dir.x * cosY + dir.z * sinY,
+            dir.y,
+            -dir.x * sinY + dir.z * cosY
+    );
+    float3 inter;
+    float3 direction = normalize(dir);
     float3 pos = (float3)(
         posX,
         posY,
@@ -222,5 +266,40 @@ __kernel void renderPixel(
     output[(get_global_id(1) * width + get_global_id(0))*4 + 1] = inter.y;
     output[(get_global_id(1) * width + get_global_id(0))*4 + 2] = inter.z;
     output[(get_global_id(1) * width + get_global_id(0))*4 + 3] = insideG;
+    int vx = x;
+    int vy = y;
+    if(insideG){
+        float3 point = inter;
+        float x = point.x;
+        float y = point.y;
+        float z = point.z;
+        float tmpx = x;
+        x = x*cos(yaw*(PI/180)) - z*sin(yaw*(PI/180));
+        z = z * cos(yaw*(PI/180)) + tmpx * sin(yaw*(PI/180));
+        float tmpy = y;
+        y = y * cos(pitch*(PI/180)) - z * sin(pitch*(PI/180));
+        z = z * cos(pitch*(PI/180)) + tmpy * sin(pitch*(PI/180));
+        tmpx = x;
+        x = x * cos(roll*(PI/180)) - y * sin(roll*(PI/180));
+        y = y * cos(roll*(PI/180)) + tmpx * sin(roll*(PI/180));
+        if (z <= 0) {
+            z = 0.00001;
+        }
+        float x2d = x * focalLength / z;
+        float y2d = y * focalLength / z;
+        //out[((int))*width + ()] = 0xFFFFFFFF;
+        //write_imageui(out, (int2)((int)((((float)width)/2)+x2d), ((((float)height)/2)+y2d)), (uint4)(255, 255, 255, 255));
+        int px = (int)(width / 2 + x2d);
+        int py = (int)(height / 2 + y2d);
+        if (px >= 0 && px < width && py >= 0 && py < height) {
+            //write_imageui(out, (int2)(px, py), (uint4)(255, 255, 255, 255));
+            //write_imageui(out, (int2)(px, py), (uint4)(0, 255, 255, 255));
+            //printf("Writing white pixel at (%d, %d)\n", px, py);
+            image[py*width + px] = (uchar4)(255, 255, 255, 255);
+        }
+        //image[vy*width + vx] = (uchar4)(0, 0, 255, 255);
+
+    }
+
 }
 
