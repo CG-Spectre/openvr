@@ -7,6 +7,7 @@
 #include "render/renderStack.h"
 #include "render/SDLConfig.h"
 #include "render/3d/cube.h"
+#include "render/3d/TextureManager.h"
 #include "render/GPU/gpu.h"
 
 
@@ -48,23 +49,31 @@ int main(int argc, char* argv[]) {
     SDL_GetWindowSize(window, &width, &height);
     SDLConfig::WINDOW_WIDTH = &width;
     SDLConfig::WINDOW_HEIGHT = &height;
-    gpu::initialize();
+    TextureManager texManager;
+    texManager.addTexture("dirt.png");
+    texManager.addTexture("grass_block_side.png");
+    texManager.addTexture("turbo.png");
+    texManager.addTexture("Avatar_Aang.png");
+    texManager.addTexture("fire_0.png");
+    texManager.addTexture("bricks.jpg");
+    texManager.addTexture("bricksnormal.jpg");
+    //texManager.addTexture("grass_block_side.png");
+    texManager.initialize();
+    gpu::initialize(texManager);
     gpu::setGLContext(&context);
     gpu::setWindow(window);
-
-
-
     bool running = true;
     SDL_Event event;
     renderStack stack;
 
     camera cam(Pose3d(0, 0, 0, 0, 0, 0));
-    cam.addObject(new cube(Pose3d(Vector3d(0, 0, 8), Vector3d(0, 0, 0)), 2));
+    cam.addObject(new cube(Pose3d(Vector3d(0, 0, 8), Vector3d(0, 0, 0)), 1));
     stack.push(new renderNode(&cam));
     auto lastUpdate = std::chrono::duration_cast<std::chrono::milliseconds>(
         std::chrono::system_clock::now().time_since_epoch()
     ).count();
     int frames = 0;
+    const bool* kb = SDL_GetKeyboardState(0);
     while (running) {
         while (SDL_PollEvent(&event)) {
             if (event.type == SDL_EVENT_QUIT) {
@@ -79,21 +88,49 @@ int main(int argc, char* argv[]) {
         stack.render(renderer);
 
         //SDL_RenderPresent(renderer);
-        cam.getPos()->setRotation(Vector3d(0, 0, cam.getPos()->rotation.z + 1));
+
         // Game loop code goes here
         auto current = std::chrono::duration_cast<std::chrono::milliseconds>(
             std::chrono::system_clock::now().time_since_epoch()
         ).count();
         frames++;
-        std::cout << ((float)frames)/((float)(current - lastUpdate)/100) << std::endl;
+        float fps = ((float)frames)/((float)(current - lastUpdate)/100);
         if (frames > 200) {
             frames = 0;
             lastUpdate = current;
         }
+
+        if (kb[SDL_SCANCODE_LEFT]) {
+            cam.getPos()->setRotation(Vector3d(cam.getPos()->rotation.x, cam.getPos()->rotation.y - 10/fps, 0));
+        }
+        if (kb[SDL_SCANCODE_RIGHT]) {
+            cam.getPos()->setRotation(Vector3d(cam.getPos()->rotation.x, cam.getPos()->rotation.y + 10/fps, 0));
+        }
+        if (kb[SDL_SCANCODE_UP]) {
+            cam.getPos()->setRotation(Vector3d(cam.getPos()->rotation.x + 10/fps, cam.getPos()->rotation.y, 0));
+        }
+        if (kb[SDL_SCANCODE_DOWN]) {
+            cam.getPos()->setRotation(Vector3d(cam.getPos()->rotation.x - 10/fps, cam.getPos()->rotation.y, 0));
+        }
+        if (kb[SDL_SCANCODE_W]) {
+            cam.getPos()->setTranslation(Vector3d(cam.getPos()->pose.x, cam.getPos()->pose.y, cam.getPos()->pose.z + 1/fps));
+        }
+        if (kb[SDL_SCANCODE_A]) {
+            cam.getPos()->setTranslation(Vector3d(cam.getPos()->pose.x - 1/fps, cam.getPos()->pose.y, cam.getPos()->pose.z));
+        }
+        if (kb[SDL_SCANCODE_S]) {
+            cam.getPos()->setTranslation(Vector3d(cam.getPos()->pose.x, cam.getPos()->pose.y, cam.getPos()->pose.z - 1/fps));
+        }
+        if (kb[SDL_SCANCODE_D]) {
+            cam.getPos()->setTranslation(Vector3d(cam.getPos()->pose.x + 1/fps, cam.getPos()->pose.y, cam.getPos()->pose.z));
+        }
+
+        //cam.getPos()->setRotation(Vector3d(0, cam.getPos()->rotation.y + 3/fps, 0));
         //lastUpdate = current;
     }
     SDL_DestroyWindow(window);
     SDL_Quit();
+    texManager.freeTextures();
     return 0;
 }
 /*#include <SDL3/SDL.h>

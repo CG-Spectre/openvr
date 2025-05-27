@@ -67,31 +67,41 @@ cube::cube(Pose3d pos, float edgeLength) {
     f1.addVertex(&v2);
     f1.addVertex(&v4);
     f1.addVertex(&v3);
+    f1.setTextureId(6);
 
     f2.addVertex(&v5);
     f2.addVertex(&v6);
-    f2.addVertex(&v7);
     f2.addVertex(&v8);
+    f2.addVertex(&v7);
+    f2.setTextureId(6);
 
     f3.addVertex(&v1);
     f3.addVertex(&v2);
     f3.addVertex(&v6);
     f3.addVertex(&v5);
+    f3.setTextureId(6);
 
+    /*f4.addVertex(&v1);
+    f4.addVertex(&v3);
+    f4.addVertex(&v7);
+    f4.addVertex(&v5);*/
+    f4.addVertex(&v7);
+    f4.addVertex(&v5);
     f4.addVertex(&v1);
     f4.addVertex(&v3);
-    f4.addVertex(&v5);
-    f4.addVertex(&v7);
+    f4.setTextureId(6);
 
     f5.addVertex(&v3);
     f5.addVertex(&v4);
     f5.addVertex(&v8);
     f5.addVertex(&v7);
+    f5.setTextureId(6);
 
-    f6.addVertex(&v4);
     f6.addVertex(&v2);
+    f6.addVertex(&v4);
     f6.addVertex(&v8);
     f6.addVertex(&v6);
+    f6.setTextureId(6);
 
     faces.push_back(&f1);
     faces.push_back(&f2);
@@ -142,23 +152,28 @@ void cube::render(SDL_Renderer *renderer) {
 float clip(float n, float lower, float upper) {
     return std::max(lower, std::min(n, upper));
 }
-SerializedObject cube::getSerializedFaces() {
+SerializedObject cube::getSerializedFaces(float tx, float ty, float tz) {
+    //std::cout << tx << std::endl;
+    tx = 0, ty = 0, tz = 0;
     std::vector<float> facesTrulySerialized;
     std::vector<int> indicesSerialized;
+    std::vector<int> texturesSerialized;
     SerializedObject output;
     for (int i = 0; i < faces.size(); i++) {
         int faceIndex = i;
         int start = facesTrulySerialized.size();
         indicesSerialized.push_back(start);
+        texturesSerialized.push_back(faces[faceIndex]->textureId);
         for (int k = 0; k < faces[faceIndex]->getVertices()->size(); k++) {
             Vector3d posNS = *faces[faceIndex]->getVertices()->at(k)->getPose() + this->pos.pose;
-            facesTrulySerialized.push_back(posNS.x);
-            facesTrulySerialized.push_back(posNS.y);
-            facesTrulySerialized.push_back(posNS.z);
+            facesTrulySerialized.push_back(posNS.x- tx);
+            facesTrulySerialized.push_back(posNS.y - ty);
+            facesTrulySerialized.push_back(posNS.z - tz);
         }
     }
     output.serialized = facesTrulySerialized;
     output.indices = indicesSerialized;
+    output.textures = texturesSerialized;
     return output;
 }
 

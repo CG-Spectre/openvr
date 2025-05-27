@@ -8,6 +8,7 @@
 #include <SDL3/SDL_events.h>
 
 #include "render/SDLConfig.h"
+#include "render/3d/TextureManager.h"
 
 
 cl::Device gpu::device;
@@ -17,6 +18,7 @@ cl::Kernel gpu::precomputeRayTrig;
 cl::Kernel gpu::renderPixel;
 cl::Kernel gpu::mapTexture;
 cl::Kernel gpu::fillTexture;
+cl::Kernel gpu::clearScreen;
 SDL_GLContext* gpu::glContext;
 SDL_Window* gpu::window;
 GLuint gpu::vertexShader;
@@ -26,7 +28,13 @@ GLuint gpu::pbo;
 cl_mem gpu::image;
 GLuint gpu::texture;
 GLuint gpu::vao;
-
+cl_mem gpu::textures;
+cl::CommandQueue gpu::queue;
+cl_sampler gpu::sampler;
+TextureManager gpu::textureManager;
+cl::Buffer gpu::widthsSerialized;
+cl::Buffer gpu::heightsSerialized;
+cl::Buffer gpu::uvSerialized;
 
 const char* gpu::vertexShaderSrc = R"(
 #version 330 core
@@ -118,8 +126,8 @@ void gpu::resize() {
     }
     glViewport(0, 0, *SDLConfig::WINDOW_WIDTH, *SDLConfig::WINDOW_HEIGHT);
 }
-void gpu::initialize() {
-
+void gpu::initialize(TextureManager texManager) {
+    gpu::textureManager = texManager;
     //std::vector<std::string> kernels = {"precomputeRayTrig"};
     std::ifstream kernelFile("kernel.cl");
     std::string src(std::istreambuf_iterator<char>(kernelFile), {});
@@ -173,6 +181,7 @@ void gpu::initialize() {
     gpu::renderPixel = cl::Kernel(program, "renderPixel");
     gpu::mapTexture = cl::Kernel(program, "mapTexture");
     gpu::fillTexture = cl::Kernel(program, "fillTexture");
+    gpu::clearScreen = cl::Kernel(program, "clearScreen");
     resize();
 
 
@@ -188,6 +197,33 @@ void gpu::initialize() {
     gpu::vertexShader = vs;
     gpu::fragmentShader = fs;*/
     std::cout << "Successfully compiled shaders!" << std::endl;
+
+    cl_image_format imageFormat;
+    imageFormat.image_channel_data_type = CL_UNORM_INT8;
+    imageFormat.image_channel_order = CL_RGBA;
+    cl_image_desc desc;
+    memset(&desc, 0, sizeof(desc));
+    desc.image_type = CL_MEM_OBJECT_IMAGE2D;
+    desc.image_width = texManager.width;
+    desc.image_height = texManager.height;
+    cl_int err;
+    cl_mem imageTex = clCreateImage(context.get(), CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, & imageFormat, & desc, texManager.image, &err);
+    if (err != CL_SUCCESS) {
+        std::cout << "Error loading image textures onto GPU." << std::endl;
+        return;
+    }
+    gpu::textures = imageTex;
+    std::cout << "Successfully loaded textures!" << std::endl;
+
+    gpu::queue = cl::CommandQueue(gpu::context, gpu::device);
+    gpu::sampler = clCreateSampler(context.get(), CL_FALSE, CL_ADDRESS_CLAMP_TO_EDGE, CL_FILTER_NEAREST, &err);
+    if (err != CL_SUCCESS) {
+        std::cout << "Error creating image sampler." << std::endl;
+        return;
+    }
+    uvSerialized = cl::Buffer(gpu::context, CL_MEM_READ_WRITE | CL_MEM_COPY_HOST_PTR, textureManager.serialized.uvSerialized.size() * sizeof(int), textureManager.serialized.uvSerialized.data());
+    widthsSerialized = cl::Buffer(gpu::context, CL_MEM_READ_WRITE | CL_MEM_COPY_HOST_PTR, textureManager.serialized.widthsSerialized.size() * sizeof(int), textureManager.serialized.widthsSerialized.data());
+    heightsSerialized = cl::Buffer(gpu::context, CL_MEM_READ_WRITE | CL_MEM_COPY_HOST_PTR, textureManager.serialized.heightsSerialized.size() * sizeof(int), textureManager.serialized.heightsSerialized.data());
     std::cout << "Successfully initialized GPU kernel!" << std::endl;
 
 }

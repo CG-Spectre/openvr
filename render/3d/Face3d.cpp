@@ -16,3 +16,7 @@ std::vector<Vertex3d*>* Face3d::getVertices() {
 void Face3d::addVertex(Vertex3d *v) {
     vertices.push_back(v);
 }
+
+void Face3d::setTextureId(int id) {
+    this->textureId = id;
+}

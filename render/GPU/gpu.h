@@ -7,11 +7,13 @@
 #include <CL/cl.hpp>
 #include <SDL3/SDL_opengl.h>
 #include <SDL3/SDL_video.h>
-
+#include <vector>
 //tmp
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
 #include <GL/gl.h>
+
+#include "render/3d/TextureManager.h"
 
 class gpu {
 public:
@@ -22,11 +24,10 @@ public:
     static cl::Kernel renderPixel;
     static cl::Kernel mapTexture;
     static cl::Kernel fillTexture;
+    static cl::Kernel clearScreen;
 
 
-
-
-    static void initialize();
+    static void initialize(TextureManager texture_manager);
     static SDL_GLContext* getGLContext();
 
     static void setWindow(SDL_Window *context);
@@ -40,7 +41,15 @@ public:
     static GLuint pbo;
     static cl_mem image;
     static GLuint vao;
+    static cl_mem textures;
+    static cl::CommandQueue queue;
+    static cl_sampler sampler;
     static void resize();
+    static TextureManager textureManager;
+    static cl::Buffer widthsSerialized;
+    static cl::Buffer heightsSerialized;
+    static cl::Buffer uvSerialized;
+
 private:
     static SDL_GLContext* glContext;
     static SDL_Window* window;

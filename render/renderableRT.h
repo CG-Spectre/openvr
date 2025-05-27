@@ -15,7 +15,7 @@ class renderableRT : public renderable {
 public:
     virtual ~renderableRT() = default;
     virtual bool renderRay(SDL_Renderer *renderer, camera* camera, Vector3d point, Vector3d direction) = 0;
-    virtual SerializedObject getSerializedFaces() = 0;
+    virtual SerializedObject getSerializedFaces(float tx, float ty, float tz) = 0;
 };
 
 

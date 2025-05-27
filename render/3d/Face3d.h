@@ -14,7 +14,10 @@ class Face3d {
     Face3d();
     std::vector<Vertex3d*>* getVertices();
     void addVertex(Vertex3d *vertex);
-    private:
+    int textureId = -1;
+    void setTextureId(int id);
+
+private:
     std::vector<Vertex3d*> vertices;
 };
 

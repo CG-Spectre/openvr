@@ -18,6 +18,7 @@ public:
     void addObject(renderableRT *object);
     Pose3d* getPos();
 private:
+    bool time = false;
     int prevWidth;
     int prevHeight;
     Pose3d pos;

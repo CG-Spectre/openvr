@@ -15,7 +15,7 @@ class camera;
 class cube : public renderableRT {
     public:
     void render(SDL_Renderer *renderer) override;
-    SerializedObject getSerializedFaces() override;
+    SerializedObject getSerializedFaces(float tx, float ty, float tz) override;
 
 
     bool renderRay(SDL_Renderer *renderer, camera* camera, Vector3d point, Vector3d direction) override;
