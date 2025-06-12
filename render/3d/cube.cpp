@@ -11,21 +11,13 @@
 #include "Vertex3d.h"
 #include "../camera.h"
 #include "../SDLConfig.h"
-Face3d f1;
-Face3d f2;
-Face3d f3;
-Face3d f4;
-Face3d f5;
-Face3d f6;
-Vertex3d v1;
-Vertex3d v2;
-Vertex3d v3;
-Vertex3d v4;
-Vertex3d v5;
-Vertex3d v6;
-Vertex3d v7;
-Vertex3d v8;
+#include "render/GPU/gpu.h"
+
+
+
 cube::cube(Pose3d pos, float edgeLength) {
+    maxFloat = std::numeric_limits<float>::max();
+    minFloat = std::numeric_limits<float>::min();
     this->pos = pos;
     float halfedge = edgeLength / 2.0f;
     v1 = Vertex3d(halfedge, halfedge, halfedge);
@@ -67,19 +59,19 @@ cube::cube(Pose3d pos, float edgeLength) {
     f1.addVertex(&v2);
     f1.addVertex(&v4);
     f1.addVertex(&v3);
-    f1.setTextureId(6);
+    f1.setTextureId(1);
 
     f2.addVertex(&v5);
     f2.addVertex(&v6);
     f2.addVertex(&v8);
     f2.addVertex(&v7);
-    f2.setTextureId(6);
+    f2.setTextureId(1);
 
     f3.addVertex(&v1);
     f3.addVertex(&v2);
     f3.addVertex(&v6);
     f3.addVertex(&v5);
-    f3.setTextureId(6);
+    f3.setTextureId(1);
 
     /*f4.addVertex(&v1);
     f4.addVertex(&v3);
@@ -89,19 +81,21 @@ cube::cube(Pose3d pos, float edgeLength) {
     f4.addVertex(&v5);
     f4.addVertex(&v1);
     f4.addVertex(&v3);
-    f4.setTextureId(6);
+    f4.setTextureId(1);
+    f4.setTextureRotation(0);
 
     f5.addVertex(&v3);
     f5.addVertex(&v4);
     f5.addVertex(&v8);
     f5.addVertex(&v7);
-    f5.setTextureId(6);
+    f5.setTextureId(1);
 
     f6.addVertex(&v2);
     f6.addVertex(&v4);
     f6.addVertex(&v8);
     f6.addVertex(&v6);
-    f6.setTextureId(6);
+    f6.setTextureId(1);
+    f6.setTextureRotation(0);
 
     faces.push_back(&f1);
     faces.push_back(&f2);
@@ -109,6 +103,7 @@ cube::cube(Pose3d pos, float edgeLength) {
     faces.push_back(&f4);
     faces.push_back(&f5);
     faces.push_back(&f6);
+    //std::cout << f1.getVertices()->size() << std::endl;
     firstVertex = v1;
     //firstVertex.getConnections(). [0].addConnection(new Vector3d(-halfedge, halfedge, -halfedge));
 }
@@ -158,22 +153,35 @@ SerializedObject cube::getSerializedFaces(float tx, float ty, float tz) {
     std::vector<float> facesTrulySerialized;
     std::vector<int> indicesSerialized;
     std::vector<int> texturesSerialized;
+    float minX = maxFloat, minY = maxFloat, minZ = maxFloat;
+    float maxX = minFloat, maxY = minFloat, maxZ = minFloat;
     SerializedObject output;
     for (int i = 0; i < faces.size(); i++) {
         int faceIndex = i;
         int start = facesTrulySerialized.size();
         indicesSerialized.push_back(start);
+        //std::cout << faces[faceIndex]->getVertices()->size() << std::endl;
         texturesSerialized.push_back(faces[faceIndex]->textureId);
+        texturesSerialized.push_back(faces[faceIndex]->textureRotation);
         for (int k = 0; k < faces[faceIndex]->getVertices()->size(); k++) {
             Vector3d posNS = *faces[faceIndex]->getVertices()->at(k)->getPose() + this->pos.pose;
-            facesTrulySerialized.push_back(posNS.x- tx);
-            facesTrulySerialized.push_back(posNS.y - ty);
-            facesTrulySerialized.push_back(posNS.z - tz);
+            facesTrulySerialized.push_back(posNS.x);
+            facesTrulySerialized.push_back(posNS.y);
+            facesTrulySerialized.push_back(posNS.z);
+            minX = std::min(minX, posNS.x);
+            maxX = std::max(maxX, posNS.x);
+            minY = std::min(minY, posNS.y);
+            maxY = std::max(maxY, posNS.y);
+            minZ = std::min(minZ, posNS.z);
+            maxZ = std::max(maxZ, posNS.z);
         }
     }
     output.serialized = facesTrulySerialized;
     output.indices = indicesSerialized;
     output.textures = texturesSerialized;
+    output.minPos = Vector3d(minX, minY, minZ);
+    output.maxPos = Vector3d(maxX, maxY, maxZ);
+    //std::cout << output.serialized.size() << std::endl;
     return output;
 }
 

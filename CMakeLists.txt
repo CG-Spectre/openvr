@@ -51,6 +51,12 @@ add_executable(openvr main.cpp
         render/3d/Texture.cpp
         render/3d/Texture.h
         stb_image_write.h
-        render/3d/SerializedTextureMap.h)
+        render/3d/SerializedTextureMap.h
+        render/3d/plane.cpp
+        render/3d/plane.h
+        render/3d/BVHNode.cpp
+        render/3d/BVHNode.h
+        render/3d/SerializedBVH.cpp
+        render/3d/SerializedBVH.h)
 target_include_directories(openvr PRIVATE ${glm_SOURCE_DIR})
 target_link_libraries(openvr PRIVATE SDL3::SDL3 ${OpenCL_LIBRARIES} opengl32 gdi32 ${GLEW_LIBRARY} glm)

@@ -6,12 +6,15 @@
 #define SERIALIZEDOBJECT_H
 #include <vector>
 
+#include "Vector3d.h"
+
 
 class SerializedObject {
     public:
       std::vector<float> serialized;
       std::vector<int> indices;
         std::vector<int> textures;
+      Vector3d minPos, maxPos;
 };
 
 

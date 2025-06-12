@@ -119,10 +119,14 @@ __kernel void fillTexture(const int width, const int height, __global uchar4* im
 __kernel void clearScreen(
      const int width,
      const int height,
-     __global uchar4* image
+     __global uchar4* image,
+     const int time
 ){
     int x = get_global_id(0);
     int y = get_global_id(1);
+    if((time ==1) == (x%2==0)){
+        //return;
+    }
     image[y*width + x] = (uchar4)(0, 0, 0, 255);
 }
 
@@ -169,6 +173,10 @@ inline float random() {
     return (float)(state & 0x00FFFFFF) / (float)0x01000000;
 }
 
+inline float3 reflect(float3 I, float3 N){
+    return I - 2.0f * dot(I, N) * N;
+}
+
 inline float3 rotateEuler(float3 v, float pitch, float yaw, float roll) {
     float cp = cos(pitch);
     float sp = sin(pitch);
@@ -201,6 +209,182 @@ inline float3 rotateEuler(float3 v, float pitch, float yaw, float roll) {
     ));
 }
 
+inline bool intersectAABB(float3 rayOrigin, float3 rayDir, float3 boxMin, float3 boxMax){
+    float3 t1 = (boxMin - rayOrigin) / rayDir;
+    float3 t2 = (boxMax - rayOrigin) / rayDir;
+
+    float3 tmin = fmin(t1, t2); // componentwise min
+    float3 tmax = fmax(t1, t2); // componentwise max
+
+    float tEntry = fmax(fmax(tmin.x, tmin.y), tmin.z);
+    float tExit  = fmin(fmin(tmax.x, tmax.y), tmax.z);
+
+    if (tEntry > tExit || tExit < 0.0f)
+        return false;
+
+    //if (tNear) *tNear = tEntry;
+    //if (tFar)  *tFar  = tExit;
+    return true;
+}
+
+inline bool isShadow(int indiceIndex,
+    __global float* bvhSerialized,
+    __global int* bvhIndices,
+    const int bvhSize,
+    const int bvhIndicesSize,
+    float3 intersection,
+    float3 lightDir,
+    __global int* indicesSquared,
+    __global int* indicesOfIndices,
+    __global float* allObjectsSerialized,
+    __global int* allIndicesSerialized,
+    int isSize,
+    int aosSize,
+    aisSize,
+    int i,
+    int k,
+    float3 pos,
+    float3 pos2,
+    float3 light,
+    float3* outputColor
+){
+    bool shadow = false;
+    int b = indiceIndex;
+    int end = b + 1 < bvhIndicesSize ? bvhIndices[b + 1] : bvhSize;
+    float3 minBound = (float3)(0.0f, 0.0f, 0.0f);
+    float3 maxBound = (float3)(0.0f, 0.0f, 0.0f);
+    for (int o = bvhIndices[b]; o < bvhIndices[b] + 6; o++) {
+        switch(o - bvhIndices[b]){
+            case 0:
+                minBound.x = bvhSerialized[o] - pos.x;
+                break;
+            case 1:
+                minBound.y = bvhSerialized[o] - pos.y;
+                break;
+            case 2:
+                minBound.z = bvhSerialized[o] - pos.z;
+                break;
+            case 3:
+                maxBound.x = bvhSerialized[o] - pos.x;
+                break;
+            case 4:
+                maxBound.y = bvhSerialized[o] - pos.y;
+                break;
+            case 5:
+                maxBound.z = bvhSerialized[o] - pos.z;
+                break;
+        }
+    }
+    bool intersect = intersectAABB(intersection, lightDir, minBound, maxBound);
+    if(intersect){
+        for (int o = bvhIndices[b] + 6; o < end; o++) {
+            if(bvhSerialized[o] < 0){
+                int i2 = -(int)(bvhSerialized[o]) - 1;
+                int startIndice2 = indicesOfIndices[i2];
+
+                int endIndice2 = aisSize;
+                int offset2 = indicesSquared[i2];
+                int endIndiceSquared2 = aosSize - offset2;
+                if(i2 < isSize - 1){
+                    endIndiceSquared2 = indicesSquared[i2 + 1] - offset2;
+                    endIndice2 = indicesOfIndices[i2 + 1];
+                }
+
+                for(int k2 = startIndice2+0; k2 < endIndice2-0; k2++){
+                    if(i2 == i && k2 == k){
+                        continue;
+                    }
+                    int startIndice22 = allIndicesSerialized[k2] + offset2;
+                    int endIndice22 = endIndiceSquared2 + offset2;
+                    if(k2 < endIndice2 - 1){
+                        endIndice22 = allIndicesSerialized[k2+1] + offset2;
+                    }
+
+                    float3 p12 = (float3)(
+                        allObjectsSerialized[startIndice22 + 0] - pos.x,
+                        allObjectsSerialized[startIndice22 + 1] - pos.y,
+                        allObjectsSerialized[startIndice22 + 2] - pos.z
+                    );
+                    float3 p22 = (float3)(
+                        allObjectsSerialized[startIndice22 + 3] - pos.x,
+                        allObjectsSerialized[startIndice22 + 4] - pos.y,
+                        allObjectsSerialized[startIndice22 + 5] - pos.z
+                    );
+                    float3 p32 = (float3)(
+                        allObjectsSerialized[startIndice22 + 6] - pos.x,
+                        allObjectsSerialized[startIndice22 + 7] - pos.y,
+                        allObjectsSerialized[startIndice22 + 8] - pos.z
+                    );
+                    float3 e1 = p22 - p12;
+                    float3 e2 = p32 - p12;
+                    float3 n2  =normalize(cross(e1, e2));
+                    float denom = dot(n2, lightDir);
+                    if(fabs(denom) > 0.001){
+                        float t = dot(n2, p12 - intersection)/denom;
+                        float dist = distance(light, intersection);
+                        float3 intersection2 = lightDir*t + intersection;
+                        float dist2 = distance(light, intersection2);
+                        if(dist2 < dist){
+
+                            float3 target = (float3)(0,1,0);
+                            float3 axis = normalize(cross(n2, target));
+                            if(axis.x == 0 && axis.y == 0 && axis.z == 0){
+                                axis = target;
+                            }
+                            double angle = acos(min(max(dot(n2, target), -1.0f), 1.0f));
+                            bool inside = false;
+                            float3 fp = rotateAroundIntersection((float3)(
+                                allObjectsSerialized[startIndice22] - pos.x,
+                                allObjectsSerialized[startIndice22 + 1] - pos.y,
+                                allObjectsSerialized[startIndice22 + 2] - pos.z
+                            ), pos2, intersection2, axis, angle);
+                            float3 p = fp;
+                            float3 np;
+                            for(int j2 = startIndice22; j2 < endIndice22; j2 += 3){
+                                //if(x == width/2 && y == height/2)
+                                    //printf("%f, %f, %f | ", p.x, p.y, p.z);
+                                if(j2 + 3 < endIndice22){
+                                    np = rotateAroundIntersection((float3)(
+                                         allObjectsSerialized[j2 + 3] - pos.x,
+                                         allObjectsSerialized[j2 + 4] - pos.y,
+                                         allObjectsSerialized[j2 + 5] - pos.z
+                                     ), pos2, intersection2, axis, angle);
+                                }else{
+                                    np = fp;
+                                }
+                                if (fabs((np.x - p.x)*(intersection2.z - p.z) - (np.z - p.z)*(intersection2.x - p.x)) < 1e-6) {
+                                    inside = true;
+                                    break;
+                                }
+                                if (((np.z > intersection2.z) != (p.z > intersection2.z)) && (intersection2.x < (p.x - np.x) * ((intersection2.z - np.z) / (p.z - np.z)) + np.x)) {
+                                    inside = !inside;
+                                }
+                                p = np;
+                            }
+                            //if(x == width/2 && y == height/2)
+                                //printf("%f, %f, %f\n", axis.x, axis.y, axis.z);
+                            shadow = shadow ? shadow : inside;
+                        }
+                    }
+                }
+            }else{
+                if(!shadow){
+                    shadow = isShadow((int)(bvhSerialized[o]), bvhSerialized, bvhIndices, bvhSize, bvhIndicesSize, intersection, lightDir, indicesSquared, indicesOfIndices, allObjectsSerialized, allIndicesSerialized, isSize, aosSize, aisSize, i, k, pos, pos2, light, outputColor);
+                }
+            }
+            if(shadow){
+
+                break;
+            }
+        }
+    }
+    if(shadow){
+        *outputColor = (float3)(1, 0, 0);
+    }
+
+    return shadow;
+}
+
 __kernel void renderPixel(
     const int width,
     const int height,
@@ -228,10 +412,24 @@ __kernel void renderPixel(
     __global int* texturesSerialized,
     __global int* uvSerialized,
     __global int* heightsSerialized,
-    __global int* widthsSerialized
+    __global int* widthsSerialized,
+    __global float* bvhSerialized,
+    __global int* bvhIndices,
+    const int bvhSize,
+    const int bvhIndicesSize
 ){
     int x = get_global_id(0);
     int y = get_global_id(1);
+    if((time ==1) == (x%2==0)){
+        //return;
+    }
+    float roll2 = -roll * (PI/180.0f);
+    float3 lights[1];
+    lights[0] = (float3)(0, 3, 6);
+    float3 lightColors[1];
+    int lightsSize = 1;
+    lightColors[0] = (float3)(1, 1, 1);
+
     if(x == width/2 && y == height/2){
         //printf("%f\n", random());
     }
@@ -245,26 +443,38 @@ __kernel void renderPixel(
         uchar a = (uchar)(clamp(color.w, 0.0f, 1.0f) * 255.0f);
         printf("%d %d %d %d\n", r, g, b, a);
     }*/
-    if((time ==1) == (x%2==0)){
-        //return;
-    }
-    float aspect = width/height;
+
+    //float aspect = width/height;
     float f = 1/tan(((PI/180)*90)/2);
-    float ndc_x = (x + 0.5)/width*2 - 1;
-    float ndc_y = 1 - (y + 0.5)/height*2;
-    float px = ndc_x * aspect;
-    float py = ndc_y;
-    float pz = -3;
-    float cosP = cos((PI/180)*pitch);
-    float sinP = sin((PI/180)*pitch);
+    //float ndc_x = (x + 0.5)/width*2 - 1;
+    //float ndc_y = 1 - (y + 0.5)/height*2;
+    /*float aspect = (float)width / (float)height;
+
+    float ndc_x = ((float)x + 0.5f) / (float)width * 2.0f - 1.0f;
+    float ndc_y = 1.0f - ((float)y + 0.5f) / (float)height * 2.0f;
+
+    float px = ndc_x * aspect / f;
+    float py = ndc_y / f;
+    float pz = -3;*/
+    float aspect = (float)width / (float)height;
+    float ndc_x = ((float)x + 0.5f) / (float)width * 2.0f - 1.0f;
+    float ndc_y = 1.0f - ((float)y + 0.5f) / (float)height * 2.0f;
+
+    float px = ndc_x / f * aspect;
+    float py = ndc_y / f;
+    float pz = -(2020.0/(float)height);
+    float cosP = cos((PI/180)*-pitch);
+    float sinP = sin((PI/180)*-pitch);
     float cosY = cos((PI/180)*yaw);
     float sinY = sin((PI/180)*yaw);
+    float cosR = cos(roll2);
+    float sinR = sin(roll2);
     float3 dir = normalize((float3)(px, py, pz));
     dir = (float3)(
-                dir.x,
-                dir.y,
-                dir.z
-        );
+        dir.x * cosR - dir.y * sinR,
+        dir.x * sinR + dir.y * cosR,
+        dir.z
+    );
     dir = (float3)(
             dir.x,
             dir.y * cosP - dir.z * sinP,
@@ -282,6 +492,7 @@ __kernel void renderPixel(
         posY,
         posZ
     );
+    light -= pos;
     float3 pos2 = (float3)(0,0,0);
     //if(x==0&&y==0){
        // printf("%f\n", pos.x);
@@ -296,24 +507,39 @@ __kernel void renderPixel(
     for(int i = 0; i < isSize; i++)
     {
         int startIndice = indicesOfIndices[i];
+
         int endIndice = aisSize;
+        int offset = indicesSquared[i];
+        int endIndiceSquared = aosSize - offset;
         if(i < isSize - 1){
+            endIndiceSquared = indicesSquared[i + 1] - offset;
             endIndice = indicesOfIndices[i + 1];
         }
-        for(int k = startIndice + 0; k < /*endIndice*/startIndice+6; k++){
-            //each face
 
-            int textureId = texturesSerialized[faceCount];
+        for(int k = startIndice + 0; k < endIndice; k++){
+            //each face
+            //printf("%d\n", k);
+            int textureId = texturesSerialized[faceCount*2];
+            int textureRot = texturesSerialized[faceCount*2 + 1];
+
+
+            if(x == width/2 && y == height/2){
+                //printf("%f, %f, %f, %f\n", cosRot);
+            }
             faceCount++;
             if(x == 0&& y==0){
-                printf("Texture: %d\n", textureId);
+                //printf("Texture: %d\n", textureRot);
             }
 
-            int startIndice2 = allIndicesSerialized[k];
-            int endIndice2 = aosSize;
+            int startIndice2 = allIndicesSerialized[k] + offset;
+            int endIndice2 = endIndiceSquared + offset;
             if(k < endIndice - 1){
-                endIndice2 = allIndicesSerialized[k+1];
+                endIndice2 = allIndicesSerialized[k+1] + offset;
             }
+            if(k != 6 && x == 0 && y == 0){
+                //printf("%d, %d, %d\n", k, endIndice2 - startIndice2, endIndice2);
+            }
+
             float3 p1 = (float3)(
                 allObjectsSerialized[startIndice2 + 0] - pos.x,
                 allObjectsSerialized[startIndice2 + 1] - pos.y,
@@ -411,7 +637,301 @@ __kernel void renderPixel(
             }
 
             if(inside){
+                for(int l = 0; l < lightsSize; l++){
+                    float3 light = lights[l];
+                    float3 lightColor = lightColors[l];
+                    float3 lightDir = normalize(light - intersection);
+                    bool shadow = false;
+                    int count = 0;
+                    int tmp1 = 0;
+                    int tmp2 = 0;
+                    float3 shadowOut;
+                    shadow = isShadow(0, bvhSerialized, bvhIndices, bvhSize, bvhIndicesSize, intersection, lightDir, indicesSquared, indicesOfIndices, allObjectsSerialized, allIndicesSerialized, isSize, aosSize, aisSize, i, k, pos, pos2, light, &shadowOut);
+                    if(shadow){
+                        continue;
+                    }
 
+                }
+
+                /*
+
+                float3 p12 = (float3)(-0.5, -0.5, 5) - pos;
+                float3 p22 = (float3)(0.5, -0.5, 5) - pos;
+                float3 p32 = (float3)(0.5, 0.5, 5) - pos;
+                float3 p42 = (float3)(-0.5, 0.5, 5) - pos;
+                float3 e1 = p22 - p12;
+                float3 e2 = p32 - p12;
+                float3 n2  =normalize(cross(e1, e2));
+                //printf("%f\n", n2.z);
+                float denom = dot(n2, lightDir);
+                if(fabs(denom) > 0.001){
+                    float t = dot(n2, p12 - intersection)/denom;
+                    float3 intersection2 = lightDir*t + intersection;
+                    if(x == width/2 && height/2 == y && i == 3){
+
+                    }
+                    if(intersection2.x > p12.x && intersection2.x < p22.x && intersection2.y < p32.y && intersection2.y > p22.y){
+                        //printf("%f, %f, %f\n", intersection.x + pos.x, intersection.y + pos.y, intersection.z + pos.z);
+                        //printf("here\n");
+                        //intersection = intersection2;
+                        shadow = true;
+                    }
+                }*/
+
+
+                /*for(int b = 0; b < bvhIndicesSize; b++){
+                    int end = b + 1 < bvhIndicesSize ? bvhIndices[b + 1] : bvhSize;
+                    float3 minBound = (float3)(0.0f, 0.0f, 0.0f);
+                    float3 maxBound = (float3)(0.0f, 0.0f, 0.0f);
+                    for (int o = bvhIndices[b]; o < bvhIndices[b] + 6; o++) {
+                        switch(o - bvhIndices[b]){
+                            case 0:
+                                minBound.x = bvhSerialized[o] - pos.x;
+                                break;
+                            case 1:
+                                minBound.y = bvhSerialized[o] - pos.y;
+                                break;
+                            case 2:
+                                minBound.z = bvhSerialized[o] - pos.z;
+                                break;
+                            case 3:
+                                maxBound.x = bvhSerialized[o] - pos.x;
+                                break;
+                            case 4:
+                                maxBound.y = bvhSerialized[o] - pos.y;
+                                break;
+                            case 5:
+                                maxBound.z = bvhSerialized[o] - pos.z;
+                                break;
+                        }
+                    }
+                    bool intersect = intersectAABB(intersection, lightDir, minBound, maxBound);
+                    if(intersect){
+                        for (int o = bvhIndices[b] + 6; o < end; o++) {
+                            if(bvhSerialized[o] < 0){
+                                int i2 = -(int)(bvhSerialized[o]) - 1;
+                                //if(x == width/2 && y == height/2){
+                                    //printf("%d\n", i2);
+                                //}
+                                if(x == width/2 && y == height/2){
+                                   // printf("%d\n", i2 == i);
+                                }
+
+                                int startIndice2 = indicesOfIndices[i2];
+
+                                int endIndice2 = aisSize;
+                                int offset2 = indicesSquared[i2];
+                                int endIndiceSquared2 = aosSize - offset2;
+                                if(i2 < isSize - 1){
+                                    endIndiceSquared2 = indicesSquared[i2 + 1] - offset2;
+                                    endIndice2 = indicesOfIndices[i2 + 1];
+                                }
+
+                                for(int k2 = startIndice2+0; k2 < endIndice2-0; k2++){
+                                    if(i2 == i && k2 == k){
+                                        continue;
+                                    }
+                                    int startIndice22 = allIndicesSerialized[k2] + offset2;
+                                    int endIndice22 = endIndiceSquared2 + offset2;
+                                    if(k2 < endIndice2 - 1){
+                                        endIndice22 = allIndicesSerialized[k2+1] + offset2;
+                                    }
+
+                                    float3 p12 = (float3)(
+                                        allObjectsSerialized[startIndice22 + 0] - pos.x,
+                                        allObjectsSerialized[startIndice22 + 1] - pos.y,
+                                        allObjectsSerialized[startIndice22 + 2] - pos.z
+                                    );
+                                    float3 p22 = (float3)(
+                                        allObjectsSerialized[startIndice22 + 3] - pos.x,
+                                        allObjectsSerialized[startIndice22 + 4] - pos.y,
+                                        allObjectsSerialized[startIndice22 + 5] - pos.z
+                                    );
+                                    float3 p32 = (float3)(
+                                        allObjectsSerialized[startIndice22 + 6] - pos.x,
+                                        allObjectsSerialized[startIndice22 + 7] - pos.y,
+                                        allObjectsSerialized[startIndice22 + 8] - pos.z
+                                    );
+                                    float3 e1 = p22 - p12;
+                                    float3 e2 = p32 - p12;
+                                    float3 n2  =normalize(cross(e1, e2));
+                                    float denom = dot(n2, lightDir);
+                                    if(fabs(denom) > 0.001){
+                                        float t = dot(n2, p12 - intersection)/denom;
+                                        float dist = distance(light, intersection);
+                                        float3 intersection2 = lightDir*t + intersection;
+                                        float dist2 = distance(light, intersection2);
+                                        if(dist2 < dist){
+
+                                            float3 target = (float3)(0,1,0);
+                                            float3 axis = normalize(cross(n2, target));
+                                            if(axis.x == 0 && axis.y == 0 && axis.z == 0){
+                                                axis = target;
+                                            }
+                                            double angle = acos(min(max(dot(n2, target), -1.0f), 1.0f));
+                                            bool inside = false;
+                                            float3 fp = rotateAroundIntersection((float3)(
+                                                allObjectsSerialized[startIndice22] - pos.x,
+                                                allObjectsSerialized[startIndice22 + 1] - pos.y,
+                                                allObjectsSerialized[startIndice22 + 2] - pos.z
+                                            ), pos2, intersection2, axis, angle);
+                                            float3 p = fp;
+                                            float3 np;
+                                            for(int j2 = startIndice22; j2 < endIndice22; j2 += 3){
+                                                //if(x == width/2 && y == height/2)
+                                                    //printf("%f, %f, %f | ", p.x, p.y, p.z);
+                                                if(j2 + 3 < endIndice22){
+                                                    np = rotateAroundIntersection((float3)(
+                                                         allObjectsSerialized[j2 + 3] - pos.x,
+                                                         allObjectsSerialized[j2 + 4] - pos.y,
+                                                         allObjectsSerialized[j2 + 5] - pos.z
+                                                     ), pos2, intersection2, axis, angle);
+                                                }else{
+                                                    np = fp;
+                                                }
+                                                if (fabs((np.x - p.x)*(intersection2.z - p.z) - (np.z - p.z)*(intersection2.x - p.x)) < 1e-6) {
+                                                    inside = true;
+                                                    break;
+                                                }
+                                                if (((np.z > intersection2.z) != (p.z > intersection2.z)) && (intersection2.x < (p.x - np.x) * ((intersection2.z - np.z) / (p.z - np.z)) + np.x)) {
+                                                    inside = !inside;
+                                                }
+                                                p = np;
+                                            }
+                                            //if(x == width/2 && y == height/2)
+                                                //printf("%f, %f, %f\n", axis.x, axis.y, axis.z);
+                                            shadow = shadow ? shadow : inside;
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    //shadow = intersect;
+                    if(x == width/2 && y == height/2){
+                        //printf("%d\n", intersect);
+                    }
+                }*/
+                /*for(int i2 = 0; i2 < isSize; i2++){
+                    if(x == width/2 && y == height/2){
+                       // printf("%d\n", i2 == i);
+                    }
+
+                    int startIndice2 = indicesOfIndices[i2];
+
+                    int endIndice2 = aisSize;
+                    int offset2 = indicesSquared[i2];
+                    int endIndiceSquared2 = aosSize - offset2;
+                    if(i2 < isSize - 1){
+                        endIndiceSquared2 = indicesSquared[i2 + 1] - offset2;
+                        endIndice2 = indicesOfIndices[i2 + 1];
+                    }
+
+                    for(int k2 = startIndice2+0; k2 < endIndice2-0; k2++){
+                        if(i2 == i && k2 == k){
+                            continue;
+                        }
+                        int startIndice22 = allIndicesSerialized[k2] + offset2;
+                        int endIndice22 = endIndiceSquared2 + offset2;
+                        if(k2 < endIndice2 - 1){
+                            endIndice22 = allIndicesSerialized[k2+1] + offset2;
+                        }
+
+                        float3 p12 = (float3)(
+                            allObjectsSerialized[startIndice22 + 0] - pos.x,
+                            allObjectsSerialized[startIndice22 + 1] - pos.y,
+                            allObjectsSerialized[startIndice22 + 2] - pos.z
+                        );
+                        float3 p22 = (float3)(
+                            allObjectsSerialized[startIndice22 + 3] - pos.x,
+                            allObjectsSerialized[startIndice22 + 4] - pos.y,
+                            allObjectsSerialized[startIndice22 + 5] - pos.z
+                        );
+                        float3 p32 = (float3)(
+                            allObjectsSerialized[startIndice22 + 6] - pos.x,
+                            allObjectsSerialized[startIndice22 + 7] - pos.y,
+                            allObjectsSerialized[startIndice22 + 8] - pos.z
+                        );
+                        float3 e1 = p22 - p12;
+                        float3 e2 = p32 - p12;
+                        float3 n2  =normalize(cross(e1, e2));
+                        float denom = dot(n2, lightDir);
+                        if(fabs(denom) > 0.001){
+                            float t = dot(n2, p12 - intersection)/denom;
+                            float dist = distance(light, intersection);
+                            float3 intersection2 = lightDir*t + intersection;
+                            float dist2 = distance(light, intersection2);
+                            if(dist2 < dist){
+
+                                float3 target = (float3)(0,1,0);
+                                float3 axis = normalize(cross(n2, target));
+                                if(axis.x == 0 && axis.y == 0 && axis.z == 0){
+                                    axis = target;
+                                }
+                                double angle = acos(min(max(dot(n2, target), -1.0f), 1.0f));
+                                bool inside = false;
+                                float3 fp = rotateAroundIntersection((float3)(
+                                    allObjectsSerialized[startIndice22] - pos.x,
+                                    allObjectsSerialized[startIndice22 + 1] - pos.y,
+                                    allObjectsSerialized[startIndice22 + 2] - pos.z
+                                ), pos2, intersection2, axis, angle);
+                                float3 p = fp;
+                                float3 np;
+                                for(int j2 = startIndice22; j2 < endIndice22; j2 += 3){
+                                    //if(x == width/2 && y == height/2)
+                                        //printf("%f, %f, %f | ", p.x, p.y, p.z);
+                                    if(j2 + 3 < endIndice22){
+                                        np = rotateAroundIntersection((float3)(
+                                             allObjectsSerialized[j2 + 3] - pos.x,
+                                             allObjectsSerialized[j2 + 4] - pos.y,
+                                             allObjectsSerialized[j2 + 5] - pos.z
+                                         ), pos2, intersection2, axis, angle);
+                                    }else{
+                                        np = fp;
+                                    }
+                                    if (fabs((np.x - p.x)*(intersection2.z - p.z) - (np.z - p.z)*(intersection2.x - p.x)) < 1e-6) {
+                                        inside = true;
+                                        break;
+                                    }
+                                    if (((np.z > intersection2.z) != (p.z > intersection2.z)) && (intersection2.x < (p.x - np.x) * ((intersection2.z - np.z) / (p.z - np.z)) + np.x)) {
+                                        inside = !inside;
+                                    }
+                                    p = np;
+                                }
+                                //if(x == width/2 && y == height/2)
+                                    //printf("%f, %f, %f\n", axis.x, axis.y, axis.z);
+                                shadow = shadow ? shadow : inside;
+                            }
+                        }
+                    }
+                }*/
+
+
+                float dist = distance(light, intersection);
+                float ka = 0.2;
+                float kd = 1;
+                float ks = 1;
+
+                float lightPower = 4;
+                kd *= lightPower;
+                ks *= lightPower;
+                float3 ambient = ka * (float3)(0.79f, 0.89f, 1);
+                if(shadow){
+                    kd = 0;
+                    ks = 0;
+                }
+                float diff = fabs(dot(n, lightDir));
+                float3 diffuse = (kd * lightColor * diff)/dist;
+                float3 reflectDir = reflect(-direction, n);
+                float spec = pow(max(dot(direction, reflectDir), 0.0f), 5.0f)/(dist*dist);
+                if(y == 0 && x == width/2){
+                    //printf("%f\n", dot(direction, reflectDir));
+                }
+                float3 specular = ks*lightColor*spec;
+                if(x == width/2 && y == height/2){
+                    //printf("%f\n", diffuse.x);
+                }
                 // && fabs(t) > fabs(maxT)
                 //maxT = t;
                 float localX = intersection.x - minX;
@@ -419,18 +939,33 @@ __kernel void renderPixel(
                 float width = maxX - minX;
                 float height = maxY - minY;
                 //printf("%f, %f, %f, %f, %f, %f\n", width, height, localX, localY, 0, 0);
-                if(x == width/2 && y == height/2){
-                    //printf("%f, %f, %f, %f\n", localX, localY, width, height);
-                }
+
                 float4 colort;
                 if(textureId == -1){
                     colort = (float4)(1, 0, 1, 1);
                 }else if(textureId == -2){
                     colort = (float4)(0, 0, 0, 0);
                 }else{
-                    colort = read_imagef(textures, sampler, (int2)(((float)localX/width)*widthsSerialized[textureId] + uvSerialized[textureId], ((float)localY/height)*heightsSerialized[textureId]));
+                    int coordX = ((float)localX/width)*widthsSerialized[textureId];
+                    int coordY = ((float)localY/height)*heightsSerialized[textureId];
+                    float sinRot = sin((PI/180)*(float)textureRot);
+                    float cosRot = cos((PI/180)*(float)textureRot);
+
+                    int coordXtmp = coordX;
+                    int coordYtmp = coordY;
+                    coordX = (sinRot * (coordY - (heightsSerialized[textureId]/2)) + cosRot * (coordX - (widthsSerialized[textureId]/2)) + widthsSerialized[textureId]/2);
+                    coordY = (sinRot * (coordXtmp - (widthsSerialized[textureId]/2)) + cosRot * (coordY - (heightsSerialized[textureId]/2)) + heightsSerialized[textureId]/2);
+                    if(sinRot < -0.001 || cosRot < -0.001){
+                        //coordX--;
+                        coordY--;
+                    }
+                    colort = read_imagef(textures, sampler, (int2)(coordX + uvSerialized[textureId] - 1, coordY));
+                    float3 lighting = ambient + diffuse + specular;
+                    colort.x *= (lighting.x);
+                    colort.y *= (lighting.y);
+                    colort.z *= (lighting.z);
                 }
-                intersection += ((float)((1-colort.x) - 0.5))/(200/t) * n;
+                //intersection += ((float)((1-colort.x) - 0.5))/(150/t) * n;
 
                 if(colort.w == 0.00){
                     //color = (float4)(0, 0, 0, 0);
@@ -464,10 +999,11 @@ __kernel void renderPixel(
         float x = point.x;
         float y = point.y;
         float z = point.z; //+ random()/100;
+        //float distFromLight = sqrt((x - light.x)*(x - light.x) + (y - light.y)*(y - light.y) + (z - light.z)*(z - light.z));
         if(y2 == 327 && x2 == 400){
            // printf("%d, %d, %f, %f\n",x, point.x, pos.x);
         }
-
+        //float pitch = 0;
 
         float tmpx = x;
         x = x*cos(yaw*(PI/180)) - z*sin(yaw*(PI/180));
@@ -492,10 +1028,12 @@ __kernel void renderPixel(
             //write_imageui(out, (int2)(px, py), (uint4)(0, 255, 255, 255));
             //printf("Writing white pixel at (%d, %d)\n", px, py);
             //float4 color = read_imagef(textures, sampler, (int2)((float)px/width * 255, (float)py/height * 255));
-            uchar r = (uchar)(clamp(color.x, 0.0f, 1.0f) * 255.0f);
-            uchar g = (uchar)(clamp(color.y, 0.0f, 1.0f) * 255.0f);
-            uchar b = (uchar)(clamp(color.z, 0.0f, 1.0f) * 255.0f);
-            uchar a = (uchar)(clamp(color.w, 0.0f, 1.0f) * 255.0f);
+            float coolness = 1.2;
+            float contrast = 1.15;
+            uchar r = (uchar)(clamp(color.x * pow(color.x, contrast - 1), 0.0f, 1.0f) * 255.0f/max(1.0f, 1.0f));
+            uchar g = (uchar)(clamp(color.y * pow(color.y, contrast - 1), 0.0f, 1.0f) * 255.0f/max(1.0f, 1.0f));
+            uchar b = (uchar)(clamp(color.z * pow(color.z, contrast - 1), 0.0f, 1.0f) * 255.0f/max(1.0f, 1.0f));
+            uchar a = (uchar)(clamp(color.w, 0.0f, 1.0f) * 255.0f/max(1.0f, 1.0f));
             image[py*width + px] = (uchar4)(r, g, b, a);
         }
         //image[vy*width + vx] = (uchar4)(0, 0, 255, 255);

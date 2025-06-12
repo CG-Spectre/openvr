@@ -1,3 +1,4 @@
+#include <cmath>
 #include <SDL3/SDL.h>
 #include <SDL3/SDL_main.h>
 #include <iostream>
@@ -7,6 +8,7 @@
 #include "render/renderStack.h"
 #include "render/SDLConfig.h"
 #include "render/3d/cube.h"
+#include "render/3d/plane.h"
 #include "render/3d/TextureManager.h"
 #include "render/GPU/gpu.h"
 
@@ -57,6 +59,7 @@ int main(int argc, char* argv[]) {
     texManager.addTexture("fire_0.png");
     texManager.addTexture("bricks.jpg");
     texManager.addTexture("bricksnormal.jpg");
+    texManager.addTexture("tiles.png");
     //texManager.addTexture("grass_block_side.png");
     texManager.initialize();
     gpu::initialize(texManager);
@@ -65,15 +68,28 @@ int main(int argc, char* argv[]) {
     bool running = true;
     SDL_Event event;
     renderStack stack;
-
-    camera cam(Pose3d(0, 0, 0, 0, 0, 0));
+    camera cam(Pose3d(0, 0, 0, 0, 0.1, 0));
     cam.addObject(new cube(Pose3d(Vector3d(0, 0, 8), Vector3d(0, 0, 0)), 1));
+    cam.addObject(new cube(Pose3d(Vector3d(-4, 0, 8), Vector3d(0, 0, 0)), 1));
+    cam.addObject(new cube(Pose3d(Vector3d(4, 0, 8), Vector3d(0, 0, 0)), 1));
+    cam.addObject(new plane(Pose3d(Vector3d(0, -0.5, 0), Vector3d(0, 0, 0)), 100));
+    cam.addObject(new plane(Pose3d(Vector3d(0, 0, 3), Vector3d(-90, 0, 0)), 1, 1));
+    cam.addObject(new plane(Pose3d(Vector3d(0, 2, 6), Vector3d(0, 0, 0)), 0.5, -1));
+    cam.rootBVH.children.push_back(BVHNode());
+    cam.rootBVH.children.push_back(BVHNode());
+    cam.rootBVH.children.push_back(BVHNode());
+    cam.rootBVH.children[0].objects.push_back(0);
+    cam.rootBVH.children[0].objects.push_back(1);
+    cam.rootBVH.children[0].objects.push_back(2);
+    cam.rootBVH.children[1].objects.push_back(4);
+    cam.rootBVH.children[2].objects.push_back(5);
     stack.push(new renderNode(&cam));
     auto lastUpdate = std::chrono::duration_cast<std::chrono::milliseconds>(
         std::chrono::system_clock::now().time_since_epoch()
     ).count();
     int frames = 0;
     const bool* kb = SDL_GetKeyboardState(0);
+
     while (running) {
         while (SDL_PollEvent(&event)) {
             if (event.type == SDL_EVENT_QUIT) {
@@ -94,37 +110,57 @@ int main(int argc, char* argv[]) {
             std::chrono::system_clock::now().time_since_epoch()
         ).count();
         frames++;
-        float fps = ((float)frames)/((float)(current - lastUpdate)/100);
+        float dt = current - lastUpdate;
+        float fps = ((float)frames)/(dt/100);
         if (frames > 200) {
             frames = 0;
             lastUpdate = current;
         }
-
+        float right = 0;
+        float forward =0;
+        float up = 0;
+        float yaw = cam.getPos()->rotation.y * (M_PI/180.0);
         if (kb[SDL_SCANCODE_LEFT]) {
-            cam.getPos()->setRotation(Vector3d(cam.getPos()->rotation.x, cam.getPos()->rotation.y - 10/fps, 0));
+
+            cam.getPos()->setRotation(Vector3d(cam.getPos()->rotation.x, cam.getPos()->rotation.y - 10/fps, cam.getPos()->rotation.z));
         }
         if (kb[SDL_SCANCODE_RIGHT]) {
-            cam.getPos()->setRotation(Vector3d(cam.getPos()->rotation.x, cam.getPos()->rotation.y + 10/fps, 0));
+            cam.getPos()->setRotation(Vector3d(cam.getPos()->rotation.x, cam.getPos()->rotation.y + 10/fps, cam.getPos()->rotation.z));
         }
         if (kb[SDL_SCANCODE_UP]) {
-            cam.getPos()->setRotation(Vector3d(cam.getPos()->rotation.x + 10/fps, cam.getPos()->rotation.y, 0));
+            cam.getPos()->setRotation(Vector3d(cam.getPos()->rotation.x + 10/fps, cam.getPos()->rotation.y, cam.getPos()->rotation.z));
         }
         if (kb[SDL_SCANCODE_DOWN]) {
-            cam.getPos()->setRotation(Vector3d(cam.getPos()->rotation.x - 10/fps, cam.getPos()->rotation.y, 0));
+            cam.getPos()->setRotation(Vector3d(cam.getPos()->rotation.x - 10/fps, cam.getPos()->rotation.y, cam.getPos()->rotation.z));
         }
         if (kb[SDL_SCANCODE_W]) {
-            cam.getPos()->setTranslation(Vector3d(cam.getPos()->pose.x, cam.getPos()->pose.y, cam.getPos()->pose.z + 1/fps));
+            forward += 1/fps;
+            //cam.getPos()->setTranslation(Vector3d(cam.getPos()->pose.x, cam.getPos()->pose.y, cam.getPos()->pose.z + 1/fps));
         }
         if (kb[SDL_SCANCODE_A]) {
-            cam.getPos()->setTranslation(Vector3d(cam.getPos()->pose.x - 1/fps, cam.getPos()->pose.y, cam.getPos()->pose.z));
+            right -= 1/fps;
+            //cam.getPos()->setTranslation(Vector3d(cam.getPos()->pose.x - 1/fps, cam.getPos()->pose.y, cam.getPos()->pose.z));
         }
         if (kb[SDL_SCANCODE_S]) {
-            cam.getPos()->setTranslation(Vector3d(cam.getPos()->pose.x, cam.getPos()->pose.y, cam.getPos()->pose.z - 1/fps));
+            forward -= 1/fps;
+            //cam.getPos()->setTranslation(Vector3d(cam.getPos()->pose.x, cam.getPos()->pose.y, cam.getPos()->pose.z - 1/fps));
         }
         if (kb[SDL_SCANCODE_D]) {
-            cam.getPos()->setTranslation(Vector3d(cam.getPos()->pose.x + 1/fps, cam.getPos()->pose.y, cam.getPos()->pose.z));
+            right += 1/fps;
+            //cam.getPos()->setTranslation(Vector3d(cam.getPos()->pose.x + 1/fps, cam.getPos()->pose.y, cam.getPos()->pose.z));
         }
-
+        if (kb[SDL_SCANCODE_SPACE]) {
+            up += 1/fps;
+        }
+        if (kb[SDL_SCANCODE_LSHIFT]) {
+            up -= 1/fps;
+        }
+        if (forward != 0 || right != 0) {
+            cam.getPos()->setRotation(Vector3d(cam.getPos()->rotation.x, cam.getPos()->rotation.y, /*std::min(std::max(cam.getPos()->rotation.z + (2.0/fps) * std::sin(current/100), -2.0), 2.0)*/0));
+        }else {
+            cam.getPos()->setRotation(Vector3d(cam.getPos()->rotation.x, cam.getPos()->rotation.y, 0));
+        }
+        cam.getPos()->setTranslation(Vector3d(cam.getPos()->pose.x + right * std::cos(yaw) + forward * std::sin(yaw), cam.getPos()->pose.y + up, cam.getPos()->pose.z + forward * std::cos(yaw) - right * std::sin(yaw)));
         //cam.getPos()->setRotation(Vector3d(0, cam.getPos()->rotation.y + 3/fps, 0));
         //lastUpdate = current;
     }

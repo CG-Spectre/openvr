@@ -16,6 +16,8 @@ class Face3d {
     void addVertex(Vertex3d *vertex);
     int textureId = -1;
     void setTextureId(int id);
+    int textureRotation = 0;
+    void setTextureRotation(int rot);
 
 private:
     std::vector<Vertex3d*> vertices;

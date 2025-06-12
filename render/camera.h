@@ -8,6 +8,7 @@
 #include "renderableRT.h"
 #include "renderStack.h"
 #include "../Pose3d.h"
+#include "3d/BVHNode.h"
 
 
 class camera : public renderable {
@@ -17,6 +18,7 @@ public:
     void render(SDL_Renderer *renderer) override;
     void addObject(renderableRT *object);
     Pose3d* getPos();
+    BVHNode rootBVH;
 private:
     bool time = false;
     int prevWidth;

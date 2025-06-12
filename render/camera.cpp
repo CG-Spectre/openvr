@@ -46,6 +46,8 @@ cl::Buffer indicesOfIndicesBuffer;
 cl::Buffer allObjectsSerializedBuffer;
 cl::Buffer allIndicesSerializedBuffer;
 cl::Buffer texturesSerializedBuffer;
+cl::Buffer bvhSerializedBuffer;
+cl::Buffer bvhIndicesBuffer;
 void camera::render(SDL_Renderer *renderer) {
     int width = *SDLConfig::WINDOW_WIDTH;
     int height = *SDLConfig::WINDOW_HEIGHT;
@@ -74,8 +76,12 @@ void camera::render(SDL_Renderer *renderer) {
     std::vector<int> texturesSerialized;
     std::vector<int> textureIndices;
     renderNode *currentNode2 = stack2.getFirst();
+    std::vector<Vector3d> minPos;
+    std::vector<Vector3d> maxPos;
     while (currentNode2 != nullptr) {
         SerializedObject objs = dynamic_cast<renderableRT*>(currentNode2->getInfo())->getSerializedFaces(-this->pos.pose.x, -this->pos.pose.y, -this->pos.pose.z);
+        minPos.push_back(objs.minPos);
+        maxPos.push_back(objs.maxPos);
         indicesSquared.push_back(allObjectsSerialized.size());
         indicesOfIndices.push_back(allIndicesSerialized.size());
         textureIndices.push_back(texturesSerialized.size());
@@ -83,10 +89,18 @@ void camera::render(SDL_Renderer *renderer) {
         allObjectsSerialized.insert(allObjectsSerialized.end(), objs.serialized.begin(), objs.serialized.end());
         allIndicesSerialized.reserve(allIndicesSerialized.size() + objs.indices.size());
         allIndicesSerialized.insert(allIndicesSerialized.end(), objs.indices.begin(), objs.indices.end());
+        //std::cout << objs.serialized[0] << std::endl;
         texturesSerialized.reserve(texturesSerialized.size() + objs.textures.size());
         texturesSerialized.insert(texturesSerialized.end(), objs.textures.begin(), objs.textures.end());
+        //std::cout << allIndicesSerialized.size() << std::endl;
         currentNode2 = currentNode2->getNext();
     }
+
+    //std::cout << rootBVH.getRectBounds(minPos, maxPos)[0].x << ", " << rootBVH.getRectBounds(minPos, maxPos)[0].y << ", " << rootBVH.getRectBounds(minPos, maxPos)[0].z << std::endl;
+    //std::cout << rootBVH.getRectBounds(minPos, maxPos)[1].x << ", " << rootBVH.getRectBounds(minPos, maxPos)[1].y << ", " << rootBVH.getRectBounds(minPos, maxPos)[1].z << std::endl;
+    rootBVH.getRectBounds(minPos, maxPos);
+    SerializedBVH rootSer = rootBVH.serialize();
+
 
     //end of serialization
     cl::Buffer outputBuffer2 = cl::Buffer(gpu::context, CL_MEM_WRITE_ONLY, width * height *4* sizeof(float));
@@ -95,12 +109,14 @@ void camera::render(SDL_Renderer *renderer) {
    // if (firstTime) {
         //firstTime = false;
         //std::cout << allObjectsSerialized[0] << std::endl;
-        outputBuffer = cl::Buffer(gpu::context, CL_MEM_WRITE_ONLY, width * height*3 * sizeof(float));
-        indicesSquaredBuffer= cl::Buffer(gpu::context, CL_MEM_READ_WRITE | CL_MEM_COPY_HOST_PTR, indicesSquared.size() * sizeof(int), indicesSquared.data());
-        indicesOfIndicesBuffer = cl::Buffer(gpu::context, CL_MEM_READ_WRITE | CL_MEM_COPY_HOST_PTR, indicesOfIndices.size() * sizeof(int), indicesOfIndices.data());
-        allObjectsSerializedBuffer = cl::Buffer(gpu::context, CL_MEM_READ_WRITE | CL_MEM_COPY_HOST_PTR, allObjectsSerialized.size() * sizeof(int), allObjectsSerialized.data());
-        allIndicesSerializedBuffer = cl::Buffer(gpu::context, CL_MEM_READ_WRITE | CL_MEM_COPY_HOST_PTR, allIndicesSerialized.size() * sizeof(int), allIndicesSerialized.data());
+    outputBuffer = cl::Buffer(gpu::context, CL_MEM_WRITE_ONLY, width * height*3 * sizeof(float));
+    indicesSquaredBuffer= cl::Buffer(gpu::context, CL_MEM_READ_WRITE | CL_MEM_COPY_HOST_PTR, indicesSquared.size() * sizeof(int), indicesSquared.data());
+    indicesOfIndicesBuffer = cl::Buffer(gpu::context, CL_MEM_READ_WRITE | CL_MEM_COPY_HOST_PTR, indicesOfIndices.size() * sizeof(int), indicesOfIndices.data());
+    allObjectsSerializedBuffer = cl::Buffer(gpu::context, CL_MEM_READ_WRITE | CL_MEM_COPY_HOST_PTR, allObjectsSerialized.size() * sizeof(float), allObjectsSerialized.data());
+    allIndicesSerializedBuffer = cl::Buffer(gpu::context, CL_MEM_READ_WRITE | CL_MEM_COPY_HOST_PTR, allIndicesSerialized.size() * sizeof(int), allIndicesSerialized.data());
     texturesSerializedBuffer = cl::Buffer(gpu::context, CL_MEM_READ_WRITE | CL_MEM_COPY_HOST_PTR, texturesSerialized.size() * sizeof(int), texturesSerialized.data());
+    bvhSerializedBuffer = cl::Buffer(gpu::context, CL_MEM_READ_WRITE | CL_MEM_COPY_HOST_PTR, rootSer.data.size() * sizeof(float), rootSer.data.data());
+    bvhIndicesBuffer = cl::Buffer(gpu::context, CL_MEM_READ_WRITE | CL_MEM_COPY_HOST_PTR, rootSer.indices.size() * sizeof(float), rootSer.indices.data());
     //}
 
     gpu::renderPixel.setArg(2, outputBuffer);
@@ -128,9 +144,15 @@ void camera::render(SDL_Renderer *renderer) {
     gpu::renderPixel.setArg(24, gpu::uvSerialized);
     gpu::renderPixel.setArg(25, gpu::heightsSerialized);
     gpu::renderPixel.setArg(26, gpu::widthsSerialized);
+    gpu::renderPixel.setArg(27, bvhSerializedBuffer);
+    gpu::renderPixel.setArg(28, bvhIndicesBuffer);
+    gpu::renderPixel.setArg(29, static_cast<int>(rootSer.data.size()));
+    gpu::renderPixel.setArg(30, static_cast<int>(rootSer.indices.size()));
     //gpu::renderPixel.setArg(24, static_cast<int>(text.size()));
+
     gpu::clearScreen.setArg(0, width);
     gpu::clearScreen.setArg(1, height);
+    gpu::clearScreen.setArg(3, static_cast<int>(time));
     clSetKernelArg(gpu::clearScreen.get(), 2, sizeof(cl_mem), &gpu::image);
     glBindBuffer(GL_PIXEL_UNPACK_BUFFER, gpu::pbo);
     /*void* ptr = glMapBuffer(GL_PIXEL_UNPACK_BUFFER, GL_WRITE_ONLY);

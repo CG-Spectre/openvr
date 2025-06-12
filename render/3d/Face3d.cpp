@@ -20,3 +20,7 @@ void Face3d::addVertex(Vertex3d *v) {
 void Face3d::setTextureId(int id) {
     this->textureId = id;
 }
+
+void Face3d::setTextureRotation(int rot) {
+    this->textureRotation = rot;
+}
