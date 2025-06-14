@@ -8,6 +8,7 @@
 #include "render/renderStack.h"
 #include "render/SDLConfig.h"
 #include "render/3d/cube.h"
+#include "render/3d/model.h"
 #include "render/3d/plane.h"
 #include "render/3d/TextureManager.h"
 #include "render/GPU/gpu.h"
@@ -69,12 +70,20 @@ int main(int argc, char* argv[]) {
     SDL_Event event;
     renderStack stack;
     camera cam(Pose3d(0, 0, 0, 0, 0.1, 0));
+    model cubeModel("cube", Pose3d(Vector3d(0, 0, -3), Vector3d(0, 0, 0)));
+    model pyramidModel("pyramid", Pose3d(Vector3d(0, 0, -3), Vector3d(0, 0, 0)));
+    model customModel("test", Pose3d(Vector3d(0, 0, -3), Vector3d(0, 0, 0)));
     cam.addObject(new cube(Pose3d(Vector3d(0, 0, 8), Vector3d(0, 0, 0)), 1));
     cam.addObject(new cube(Pose3d(Vector3d(-4, 0, 8), Vector3d(0, 0, 0)), 1));
     cam.addObject(new cube(Pose3d(Vector3d(4, 0, 8), Vector3d(0, 0, 0)), 1));
     cam.addObject(new plane(Pose3d(Vector3d(0, -0.5, 0), Vector3d(0, 0, 0)), 100));
     cam.addObject(new plane(Pose3d(Vector3d(0, 0, 3), Vector3d(-90, 0, 0)), 1, 1));
     cam.addObject(new plane(Pose3d(Vector3d(0, 2, 6), Vector3d(0, 0, 0)), 0.5, -1));
+    cam.addObject(&customModel);
+    light l1(Vector3d(0, 3, 6), Vector3d(1, 1, 1), 4);
+    cam.addLight(&l1);
+    cam.rootBVH.children.push_back(BVHNode());
+    cam.rootBVH.children.push_back(BVHNode());
     cam.rootBVH.children.push_back(BVHNode());
     cam.rootBVH.children.push_back(BVHNode());
     cam.rootBVH.children.push_back(BVHNode());
@@ -83,6 +92,8 @@ int main(int argc, char* argv[]) {
     cam.rootBVH.children[0].objects.push_back(2);
     cam.rootBVH.children[1].objects.push_back(4);
     cam.rootBVH.children[2].objects.push_back(5);
+    cam.rootBVH.children[3].objects.push_back(3);
+    //cam.rootBVH.children[4].objects.push_back(6);
     stack.push(new renderNode(&cam));
     auto lastUpdate = std::chrono::duration_cast<std::chrono::milliseconds>(
         std::chrono::system_clock::now().time_since_epoch()
@@ -161,6 +172,10 @@ int main(int argc, char* argv[]) {
             cam.getPos()->setRotation(Vector3d(cam.getPos()->rotation.x, cam.getPos()->rotation.y, 0));
         }
         cam.getPos()->setTranslation(Vector3d(cam.getPos()->pose.x + right * std::cos(yaw) + forward * std::sin(yaw), cam.getPos()->pose.y + up, cam.getPos()->pose.z + forward * std::cos(yaw) - right * std::sin(yaw)));
+        //l1.position = cam.getPos()->pose;
+        //l1.position.z = cam.getPos()->pose.z + 1*std::sin(yaw);
+        //l1.position.x = cam.getPos()->pose.x + 1*std::cos(yaw);
+        //l1.position.y = cam.getPos()->pose.y - 0.5;
         //cam.getPos()->setRotation(Vector3d(0, cam.getPos()->rotation.y + 3/fps, 0));
         //lastUpdate = current;
     }

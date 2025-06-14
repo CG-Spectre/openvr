@@ -225,6 +225,13 @@ void gpu::initialize(TextureManager texManager) {
     widthsSerialized = cl::Buffer(gpu::context, CL_MEM_READ_WRITE | CL_MEM_COPY_HOST_PTR, textureManager.serialized.widthsSerialized.size() * sizeof(int), textureManager.serialized.widthsSerialized.data());
     heightsSerialized = cl::Buffer(gpu::context, CL_MEM_READ_WRITE | CL_MEM_COPY_HOST_PTR, textureManager.serialized.heightsSerialized.size() * sizeof(int), textureManager.serialized.heightsSerialized.data());
     std::cout << "Successfully initialized GPU kernel!" << std::endl;
+    size_t logsize;
+    clGetProgramBuildInfo(program.get(), device.get(), CL_PROGRAM_BUILD_LOG, 0, NULL, &logsize);
+    char *log = (char *)malloc(logsize);
+    clGetProgramBuildInfo(program.get(), device.get(), CL_PROGRAM_BUILD_LOG, logsize, log, NULL);
+
+    printf("Build log:\n%s\n", log);
+    free(log);
 
 }
 void gpu::setGLContext(SDL_GLContext* context) {

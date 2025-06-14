@@ -36,6 +36,10 @@ void camera::addObject(renderableRT *object) {
     this->stack.push(new renderNode(object));
 }
 
+void camera::addLight(light *object) {
+    this->lights.push_back(object);
+}
+
 Pose3d* camera::getPos() {
     return &this->pos;
 }
@@ -48,7 +52,10 @@ cl::Buffer allIndicesSerializedBuffer;
 cl::Buffer texturesSerializedBuffer;
 cl::Buffer bvhSerializedBuffer;
 cl::Buffer bvhIndicesBuffer;
+cl::Buffer lightsSerializedBuffer;
+cl::Buffer textureIndicesBuffer;
 void camera::render(SDL_Renderer *renderer) {
+
     int width = *SDLConfig::WINDOW_WIDTH;
     int height = *SDLConfig::WINDOW_HEIGHT;
 
@@ -75,6 +82,12 @@ void camera::render(SDL_Renderer *renderer) {
     std::vector<int> allIndicesSerialized;
     std::vector<int> texturesSerialized;
     std::vector<int> textureIndices;
+    std::vector<float> lightsSerialized;
+    for (int i = 0; i < this->lights.size(); i++) {
+        std::vector<float> serialized = this->lights[i]->serialize();
+        lightsSerialized.reserve(lightsSerialized.size() + serialized.size());
+        lightsSerialized.insert(lightsSerialized.end(), serialized.begin(), serialized.end());
+    }
     renderNode *currentNode2 = stack2.getFirst();
     std::vector<Vector3d> minPos;
     std::vector<Vector3d> maxPos;
@@ -117,6 +130,8 @@ void camera::render(SDL_Renderer *renderer) {
     texturesSerializedBuffer = cl::Buffer(gpu::context, CL_MEM_READ_WRITE | CL_MEM_COPY_HOST_PTR, texturesSerialized.size() * sizeof(int), texturesSerialized.data());
     bvhSerializedBuffer = cl::Buffer(gpu::context, CL_MEM_READ_WRITE | CL_MEM_COPY_HOST_PTR, rootSer.data.size() * sizeof(float), rootSer.data.data());
     bvhIndicesBuffer = cl::Buffer(gpu::context, CL_MEM_READ_WRITE | CL_MEM_COPY_HOST_PTR, rootSer.indices.size() * sizeof(float), rootSer.indices.data());
+    lightsSerializedBuffer = cl::Buffer(gpu::context, CL_MEM_READ_WRITE | CL_MEM_COPY_HOST_PTR, lightsSerialized.size() * sizeof(float), lightsSerialized.data());
+    textureIndicesBuffer = cl::Buffer(gpu::context, CL_MEM_READ_WRITE | CL_MEM_COPY_HOST_PTR, textureIndices.size() * sizeof(int), textureIndices.data());
     //}
 
     gpu::renderPixel.setArg(2, outputBuffer);
@@ -148,6 +163,9 @@ void camera::render(SDL_Renderer *renderer) {
     gpu::renderPixel.setArg(28, bvhIndicesBuffer);
     gpu::renderPixel.setArg(29, static_cast<int>(rootSer.data.size()));
     gpu::renderPixel.setArg(30, static_cast<int>(rootSer.indices.size()));
+    gpu::renderPixel.setArg(31, lightsSerializedBuffer);
+    gpu::renderPixel.setArg(32, static_cast<int>(lightsSerialized.size()));
+    gpu::renderPixel.setArg(33, textureIndicesBuffer);
     //gpu::renderPixel.setArg(24, static_cast<int>(text.size()));
 
     gpu::clearScreen.setArg(0, width);
@@ -160,8 +178,13 @@ void camera::render(SDL_Renderer *renderer) {
     glUnmapBuffer(GL_PIXEL_UNPACK_BUFFER);
     glBindBuffer(GL_PIXEL_UNPACK_BUFFER, 0);*/
     clEnqueueAcquireGLObjects(gpu::queue.get(), 1, &gpu::image, 0, nullptr, nullptr);
+
     gpu::queue.enqueueNDRangeKernel(gpu::clearScreen, cl::NullRange, cl::NDRange(width, height));
+    //gpu::queue.finish();
+    //std::cout << "start" << std::endl;
     gpu::queue.enqueueNDRangeKernel(gpu::renderPixel, cl::NullRange, cl::NDRange(width, height));
+    //gpu::queue.finish();
+   // std::cout << "end" << std::endl;
     clEnqueueReleaseGLObjects(gpu::queue.get(), 1, &gpu::image, 0, nullptr, nullptr);
 
     glBindTexture(GL_TEXTURE_2D, gpu::texture);
@@ -175,6 +198,7 @@ void camera::render(SDL_Renderer *renderer) {
     glBindTexture(GL_TEXTURE_2D, gpu::texture);
     glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
     SDL_GL_SwapWindow(gpu::getWindow());
+    //std::cout << "end2" << std::endl;
 }
 
 
