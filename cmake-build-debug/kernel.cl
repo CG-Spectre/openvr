@@ -1,5 +1,8 @@
 #define PI 3.1415926f
 
+
+
+
 __kernel void precomputeRayTrig(const int width,
                          const int height, const float yaw, const float pitch,
                          __global float* output)
@@ -158,13 +161,11 @@ bool intersect_triangle(float3 orig, float3 dir, float3 v0, float3 v1, float3 v2
     return false;
 }
 
-inline float random() {
-    int gid = get_global_id(0) * get_global_id(1);
-    int seed = 10120;
+inline float random(int seed) {
     // Simple LCG parameters
     uint a = 166452500;
     uint c = 1013904223;
-
+    int gid = 0;//get_global_id(0) + get_global_id(1);
     // Use seed + gid to get different sequences for each work item
     uint state = seed + gid;
 
@@ -173,6 +174,38 @@ inline float random() {
 
     // Normalize to range [0, 1)
     return (float)(state & 0x00FFFFFF) / (float)0x01000000;
+}
+
+inline float3 randomFromHemisphere(float3 R, float shininess, int seed){
+    float u1 = random(seed);
+    float u2 = random(seed*10);
+    float cosTheta = pow(u1, 1.0f / (shininess + 1.0f));
+    float sinTheta = sqrt(1 - cosTheta * cosTheta);
+    float phi = 2.0 * PI * u2;
+    float xl = sinTheta * cos(phi);
+    float yl = sinTheta * sin(phi);
+    float zl = cosTheta;
+    float3 sampleDirLocal = (float3)(xl, yl, zl);
+    float3 T;
+    if (fabs(R.x) > 0.5f)
+        T = normalize(cross((float3)(0.0f, 1.0f, 0.0f), R));
+    else
+        T = normalize(cross((float3)(1.0f, 0.0f, 0.0f), R));
+    float3 B = cross(R, T);
+    float3 sampleDirWorld = normalize(T*sampleDirLocal.x + B*sampleDirLocal.y + R*sampleDirLocal.z);
+    return sampleDirWorld;
+}
+
+inline float3 staticFromHemisphere(float3 R, float xl, float yl, float zl){
+    float3 sampleDirLocal = (float3)(xl, yl, zl);
+    float3 T;
+    if (fabs(R.x) > 0.5f)
+        T = normalize(cross((float3)(0.0f, 1.0f, 0.0f), R));
+    else
+        T = normalize(cross((float3)(1.0f, 0.0f, 0.0f), R));
+    float3 B = cross(R, T);
+    float3 sampleDirWorld = normalize(T*sampleDirLocal.x + B*sampleDirLocal.y + R*sampleDirLocal.z);
+    return sampleDirWorld;
 }
 
 inline float3 reflect(float3 I, float3 N){
@@ -249,153 +282,165 @@ inline float isShadow(__global float* bvhSerialized,
     float3 light,
     float3* outputColor
 ){
-    const int maxSize = 64;
-    int stack[maxSize];
-    stack[0] = 0;
-    int stackSize = 1;
-    float shadow = 0;
-    int index = 0;
-    while(index < stackSize){
-        int indiceIndex = stack[index];
-        int b = indiceIndex;
-        int end = b + 1 < bvhIndicesSize ? bvhIndices[b + 1] : bvhSize;
-        float3 minBound = (float3)(0.0f, 0.0f, 0.0f);
-        float3 maxBound = (float3)(0.0f, 0.0f, 0.0f);
-        for (int o = bvhIndices[b]; o < bvhIndices[b] + 6; o++) {
-            switch(o - bvhIndices[b]){
-                case 0:
-                    minBound.x = bvhSerialized[o] - pos.x;
-                    break;
-                case 1:
-                    minBound.y = bvhSerialized[o] - pos.y;
-                    break;
-                case 2:
-                    minBound.z = bvhSerialized[o] - pos.z;
-                    break;
-                case 3:
-                    maxBound.x = bvhSerialized[o] - pos.x;
-                    break;
-                case 4:
-                    maxBound.y = bvhSerialized[o] - pos.y;
-                    break;
-                case 5:
-                    maxBound.z = bvhSerialized[o] - pos.z;
-                    break;
-            }
-        }
-        bool intersect = intersectAABB(intersection, lightDir, minBound, maxBound);
-        if(intersect){
-            for (int o = bvhIndices[b] + 6; o < end; o++) {
-                if(bvhSerialized[o] < 0){
-                    int i2 = -(int)(bvhSerialized[o]) - 1;
-                    int startIndice2 = indicesOfIndices[i2];
+   const int maxSize = 64;
+   int stack[maxSize];
+   stack[0] = 0;
+   int stackSize = 1;
+   float shadow = 0;
+   int index = 0;
+   while(index < stackSize){
+       int indiceIndex = stack[index];
+       int b = indiceIndex;
+       int end = b + 1 < bvhIndicesSize ? bvhIndices[b + 1] : bvhSize;
+       float3 minBound = (float3)(0.0f, 0.0f, 0.0f);
+       float3 maxBound = (float3)(0.0f, 0.0f, 0.0f);
+       for (int o = bvhIndices[b]; o < bvhIndices[b] + 6; o++) {
+           switch(o - bvhIndices[b]){
+               case 0:
+                   minBound.x = bvhSerialized[o] - pos.x;
+                   break;
+               case 1:
+                   minBound.y = bvhSerialized[o] - pos.y;
+                   break;
+               case 2:
+                   minBound.z = bvhSerialized[o] - pos.z;
+                   break;
+               case 3:
+                   maxBound.x = bvhSerialized[o] - pos.x;
+                   break;
+               case 4:
+                   maxBound.y = bvhSerialized[o] - pos.y;
+                   break;
+               case 5:
+                   maxBound.z = bvhSerialized[o] - pos.z;
+                   break;
+           }
+       }
+       bool intersect = intersectAABB(intersection, lightDir, minBound, maxBound);
+       if(intersect){
+           for (int o = bvhIndices[b] + 6; o < end; o++) {
+               if(bvhSerialized[o] < 0){
+                   int i2 = -(int)(bvhSerialized[o]) - 1;
+                   int startIndice2 = indicesOfIndices[i2];
 
-                    int endIndice2 = aisSize;
-                    int offset2 = indicesSquared[i2];
-                    int endIndiceSquared2 = aosSize - offset2;
-                    if(i2 < isSize - 1){
-                        endIndiceSquared2 = indicesSquared[i2 + 1] - offset2;
-                        endIndice2 = indicesOfIndices[i2 + 1];
-                    }
+                   int endIndice2 = aisSize;
+                   int offset2 = indicesSquared[i2];
+                   int endIndiceSquared2 = aosSize - offset2;
+                   if(i2 < isSize - 1){
+                       endIndiceSquared2 = indicesSquared[i2 + 1] - offset2;
+                       endIndice2 = indicesOfIndices[i2 + 1];
+                   }
 
-                    for(int k2 = startIndice2+0; k2 < endIndice2-0; k2++){
-                        if(i2 == i && k2 == k){
-                            continue;
-                        }
-                        int startIndice22 = allIndicesSerialized[k2] + offset2;
-                        int endIndice22 = endIndiceSquared2 + offset2;
-                        if(k2 < endIndice2 - 1){
-                            endIndice22 = allIndicesSerialized[k2+1] + offset2;
-                        }
+                   for(int k2 = startIndice2+0; k2 < endIndice2-0; k2++){
+                       if(i2 == i && k2 == k){
+                           continue;
+                       }
+                       int startIndice22 = allIndicesSerialized[k2] + offset2;
+                       int endIndice22 = endIndiceSquared2 + offset2;
+                       if(k2 < endIndice2 - 1){
+                           endIndice22 = allIndicesSerialized[k2+1] + offset2;
+                       }
 
-                        float3 p12 = (float3)(
-                            allObjectsSerialized[startIndice22 + 0] - pos.x,
-                            allObjectsSerialized[startIndice22 + 1] - pos.y,
-                            allObjectsSerialized[startIndice22 + 2] - pos.z
-                        );
-                        float3 p22 = (float3)(
-                            allObjectsSerialized[startIndice22 + 3] - pos.x,
-                            allObjectsSerialized[startIndice22 + 4] - pos.y,
-                            allObjectsSerialized[startIndice22 + 5] - pos.z
-                        );
-                        float3 p32 = (float3)(
-                            allObjectsSerialized[startIndice22 + 6] - pos.x,
-                            allObjectsSerialized[startIndice22 + 7] - pos.y,
-                            allObjectsSerialized[startIndice22 + 8] - pos.z
-                        );
-                        float3 e1 = p22 - p12;
-                        float3 e2 = p32 - p12;
-                        float3 n2  =normalize(cross(e1, e2));
-                        float denom = dot(n2, lightDir);
-                        if(fabs(denom) > 0.001){
-                            float t = dot(n2, p12 - intersection)/denom;
-                            float dist = distance(light, intersection);
-                            float3 intersection2 = lightDir*t + intersection;
-                            float dist2 = distance(light, intersection2);
-                            if(dist2 < dist){
+                       float3 p12 = (float3)(
+                           allObjectsSerialized[startIndice22 + 0] - pos.x,
+                           allObjectsSerialized[startIndice22 + 1] - pos.y,
+                           allObjectsSerialized[startIndice22 + 2] - pos.z
+                       );
+                       float3 p22 = (float3)(
+                           allObjectsSerialized[startIndice22 + 3] - pos.x,
+                           allObjectsSerialized[startIndice22 + 4] - pos.y,
+                           allObjectsSerialized[startIndice22 + 5] - pos.z
+                       );
+                       float3 p32 = (float3)(
+                           allObjectsSerialized[startIndice22 + 6] - pos.x,
+                           allObjectsSerialized[startIndice22 + 7] - pos.y,
+                           allObjectsSerialized[startIndice22 + 8] - pos.z
+                       );
+                       float3 e1 = p22 - p12;
+                       float3 e2 = p32 - p12;
+                       float3 n2  =normalize(cross(e1, e2));
+                       float denom = dot(n2, lightDir);
+                       if(fabs(denom) > 0.001){
+                           float t = dot(n2, p12 - intersection)/denom;
+                           float dist = distance(light, intersection);
+                           float3 intersection2 = lightDir*t + intersection;
+                           float dist2 = distance(intersection, intersection2);
+                           float dist3 = distance(light, intersection2);
+                           if(dist2 < dist && dist3 < dist){
 
-                                float3 target = (float3)(0,1,0);
-                                float3 axis = normalize(cross(n2, target));
-                                if(axis.x == 0 && axis.y == 0 && axis.z == 0){
-                                    axis = target;
-                                }
-                                double angle = acos(min(max(dot(n2, target), -1.0f), 1.0f));
-                                bool inside = false;
-                                float3 fp = rotateAroundIntersection((float3)(
-                                    allObjectsSerialized[startIndice22] - pos.x,
-                                    allObjectsSerialized[startIndice22 + 1] - pos.y,
-                                    allObjectsSerialized[startIndice22 + 2] - pos.z
-                                ), pos2, intersection2, axis, angle);
-                                float3 p = fp;
-                                float3 np;
-                                for(int j2 = startIndice22; j2 < endIndice22; j2 += 3){
-                                    //if(x == width/2 && y == height/2)
-                                        //printf("%f, %f, %f | ", p.x, p.y, p.z);
-                                    if(j2 + 3 < endIndice22){
-                                        np = rotateAroundIntersection((float3)(
-                                             allObjectsSerialized[j2 + 3] - pos.x,
-                                             allObjectsSerialized[j2 + 4] - pos.y,
-                                             allObjectsSerialized[j2 + 5] - pos.z
-                                         ), pos2, intersection2, axis, angle);
-                                    }else{
-                                        np = fp;
-                                    }
-                                    if (fabs((np.x - p.x)*(intersection2.z - p.z) - (np.z - p.z)*(intersection2.x - p.x)) < 1e-6) {
-                                        inside = true;
-                                        break;
-                                    }
-                                    if (((np.z > intersection2.z) != (p.z > intersection2.z)) && (intersection2.x < (p.x - np.x) * ((intersection2.z - np.z) / (p.z - np.z)) + np.x)) {
-                                        inside = !inside;
-                                    }
-                                    p = np;
-                                }
-                                //if(x == width/2 && y == height/2)
-                                    //printf("%f, %f, %f\n", axis.x, axis.y, axis.z);
-                                if(inside){
-                                    shadow = max(shadow, 1.0f);
-                                }
+                               float3 target = (float3)(0,1,0);
+                               float3 axis = normalize(cross(n2, target));
+                               if(axis.x == 0 && axis.y == 0 && axis.z == 0){
+                                   axis = target;
+                               }
+                               double angle = acos(min(max(dot(n2, target), -1.0f), 1.0f));
+                               bool inside = false;
+                               float3 fp = rotateAroundIntersection((float3)(
+                                   allObjectsSerialized[startIndice22] - pos.x,
+                                   allObjectsSerialized[startIndice22 + 1] - pos.y,
+                                   allObjectsSerialized[startIndice22 + 2] - pos.z
+                               ), pos2, intersection2, axis, angle);
+                               float3 p = fp;
+                               float3 np;
+                               for(int j2 = startIndice22; j2 < endIndice22; j2 += 3){
+                                   //if(x == width/2 && y == height/2)
+                                       //printf("%f, %f, %f | ", p.x, p.y, p.z);
+                                   if(j2 + 3 < endIndice22){
+                                       np = rotateAroundIntersection((float3)(
+                                            allObjectsSerialized[j2 + 3] - pos.x,
+                                            allObjectsSerialized[j2 + 4] - pos.y,
+                                            allObjectsSerialized[j2 + 5] - pos.z
+                                        ), pos2, intersection2, axis, angle);
+                                   }else{
+                                       np = fp;
+                                   }
+                                   if (fabs((np.x - p.x)*(intersection2.z - p.z) - (np.z - p.z)*(intersection2.x - p.x)) < 1e-6) {
+                                       inside = true;
+                                       break;
+                                   }
+                                   if (((np.z > intersection2.z) != (p.z > intersection2.z)) && (intersection2.x < (p.x - np.x) * ((intersection2.z - np.z) / (p.z - np.z)) + np.x)) {
+                                       inside = !inside;
+                                   }
+                                   p = np;
+                               }
+                               //if(x == width/2 && y == height/2)
+                                   //printf("%f, %f, %f\n", axis.x, axis.y, axis.z);
+                               if(inside){
+                                   shadow = max(shadow, 1.0f);
+                               }
 
-                            }
-                        }
-                    }
-                }else{
-                    if(!(shadow == 1) && stackSize < maxSize){
-                        stack[stackSize] = (int)(bvhSerialized[o]);
-                        stackSize++;
-                        //shadow = max(shadow, isShadow((int)(bvhSerialized[o]), bvhSerialized, bvhIndices, bvhSize, bvhIndicesSize, intersection, lightDir, indicesSquared, indicesOfIndices, allObjectsSerialized, allIndicesSerialized, isSize, aosSize, aisSize, i, k, pos, pos2, light, outputColor));
-                    }
-                }
-                if(shadow == 1){
+                           }
+                       }
+                   }
+               }else{
+                   if(!(shadow == 1) && stackSize < maxSize){
+                       stack[stackSize] = (int)(bvhSerialized[o]);
+                       stackSize++;
+                       //shadow = max(shadow, isShadow((int)(bvhSerialized[o]), bvhSerialized, bvhIndices, bvhSize, bvhIndicesSize, intersection, lightDir, indicesSquared, indicesOfIndices, allObjectsSerialized, allIndicesSerialized, isSize, aosSize, aisSize, i, k, pos, (float3)(0, 0, 0), light, outputColor));
+                   }
+               }
+               if(shadow == 1){
 
-                    break;
-                }
-            }
-        }
-        index++;
-    }
-    return shadow;
+                   break;
+               }
+           }
+       }
+       index++;
+   }
+   return shadow;
 }
 
+inline float3 TBN_mult(float3 t, float3 b, float3 n, float3 vec) {
+    return vec.x * t + vec.y * b + vec.z * n;
+}
+inline float4 hexToColor(int hexValue) {
+    //printf("%d\n", hexValue);
+    float r = (float)((hexValue >> 16) & 0xFF) / 255.0f; // Red channel
+    float g = (float)((hexValue >> 8) & 0xFF) / 255.0f;  // Green channel
+    float b = (float)(hexValue & 0xFF) / 255.0f;         // Blue channel
+
+    return (float4)(r, g, b, 1);
+}
 inline void rayToObject(
     __global int* indicesSquared,
     __global int* indicesOfIndices,
@@ -504,6 +549,7 @@ inline void rayToObject(
                         float3 e1 = p22 - p12;
                         float3 e2 = p32 - p12;
                         float3 n2  =normalize(cross(e1, e2));
+                        float3 n3 = n2;
                         float denom = dot(n2, direction);
                         if(fabs(denom) < 0.001){
                             continue;
@@ -528,6 +574,25 @@ inline void rayToObject(
                                 allObjectsSerialized[startIndice22 + 1] - pos.y,
                                 allObjectsSerialized[startIndice22 + 2] - pos.z
                             ), pos2, intersection, axis, angle);
+                            float3 sp = rotateAroundIntersection((float3)(
+                                allObjectsSerialized[startIndice22 + 3] - pos.x,
+                                allObjectsSerialized[startIndice22 + 4] - pos.y,
+                                allObjectsSerialized[startIndice22 + 5] - pos.z
+                            ), pos2, intersection, axis, angle);
+                            float3 fpBelow = (float3)(fp.x, fp.y - 1, fp.z);
+                            float3 n4 = normalize(cross(sp - fp, fpBelow - fp));
+                            float3 target2 = (float3)(0, 0, -1);
+                            float3 axis2 = normalize(cross(n4, target2));
+                            bool rotateTwice = true;
+                            if(axis2.x == 0 && axis2.y == 0 && axis2.z == 0){
+                                //axis2 = target;
+                                rotateTwice = false;
+                            }
+                            double angle2 = acos(min(max(dot(n4, target2), -1.0f), 1.0f));
+                            if(rotateTwice){
+                                fp = rotateAroundIntersection(fp, pos2, intersection, axis2, angle2);
+                            }
+
                             float3 p = fp;
                             float3 np;
                             float maxX = -100000.0;
@@ -545,6 +610,10 @@ inline void rayToObject(
                                          allObjectsSerialized[j2 + 4] - pos.y,
                                          allObjectsSerialized[j2 + 5] - pos.z
                                      ), pos2, intersection, axis, angle);
+                                     if(rotateTwice){
+                                        np = rotateAroundIntersection(np, pos2, intersection, axis2, angle2);
+                                     }
+
                                 }else{
                                     np = fp;
                                 }
@@ -560,40 +629,136 @@ inline void rayToObject(
 
                             if(inside){
                                 //*intersected = true;
-                                *dist = dist2;
-                                *intersectionRet = intersection;
-                                *objindex = i2;
-                                *normal = n2;
-                                *face = k2;
+
                                 float4 colort;
-                                int faceCount = 1;
-                                int textureId = texturesSerialized[textureIndices[i2] + (k2 - startIndice2)];
-                                int textureRot = texturesSerialized[faceCount*2 + 1];
+                                int textureId = texturesSerialized[(k2)*6];
+                                int normalMapId = texturesSerialized[(k2)*6 + 2];
+                                //normalMapId = 6;
+                                int dispMapId = texturesSerialized[(k2)*6 + 5];
+                                int textureRot = texturesSerialized[(k2)*6 + 1];
                                 float localX = intersection.x - minX;
                                 float localY = intersection.z - minY;
                                 float width = maxX - minX;
                                 float height = maxY - minY;
+                                int textureWidth = 0;
+                                int textureHeight = 0;
+                                int coordX = 0;
+                                int coordY = 0;
                                 if(textureId == -1){
                                     colort = (float4)(1, 0, 1, 1);
                                 }else if(textureId == -2){
                                     colort = (float4)(0, 0, 0, 0);
+                                }else if(textureId > 99999){
+                                    colort = hexToColor(textureId - 100000);
+
                                 }else{
-                                    int coordX = ((float)localX/width)*widthsSerialized[textureId];
-                                    int coordY = ((float)localY/height)*heightsSerialized[textureId];
+                                    coordX = ((float)localX/width)*widthsSerialized[textureId];
+                                    coordY = ((float)localY/height)*heightsSerialized[textureId];
+                                    textureWidth = widthsSerialized[textureId];
+                                    textureHeight = heightsSerialized[textureId];
                                     float sinRot = sin((PI/180)*(float)textureRot);
                                     float cosRot = cos((PI/180)*(float)textureRot);
+
+                                    if(sinRot < -0.001 || cosRot < -0.001){
+                                        coordX++;
+                                        coordY++;
+                                    }
 
                                     int coordXtmp = coordX;
                                     int coordYtmp = coordY;
                                     coordX = (sinRot * (coordY - (heightsSerialized[textureId]/2)) + cosRot * (coordX - (widthsSerialized[textureId]/2)) + widthsSerialized[textureId]/2);
                                     coordY = (sinRot * (coordXtmp - (widthsSerialized[textureId]/2)) + cosRot * (coordY - (heightsSerialized[textureId]/2)) + heightsSerialized[textureId]/2);
-                                    if(sinRot < -0.001 || cosRot < -0.001){
-                                        //coordX--;
-                                        coordY--;
-                                    }
-                                    colort = read_imagef(textures, sampler, (int2)(coordX + uvSerialized[textureId] - 1, coordY));
+
+                                    colort = read_imagef(textures, sampler, (int2)(coordX + uvSerialized[textureId], coordY));
 
                                 }
+                                if(normalMapId != -1){
+
+                                    if(!(widthsSerialized[normalMapId] == textureWidth && heightsSerialized[normalMapId] == textureHeight)){
+                                        coordX = ((float)localX/width)*widthsSerialized[normalMapId];
+                                        coordY = ((float)localY/height)*heightsSerialized[normalMapId];
+                                        float sinRot = sin((PI/180)*(float)textureRot);
+                                        float cosRot = cos((PI/180)*(float)textureRot);
+
+                                        if(sinRot < -0.001 || cosRot < -0.001){
+                                            coordX++;
+                                            coordY++;
+                                        }
+
+                                        int coordXtmp = coordX;
+                                        int coordYtmp = coordY;
+                                        coordX = (sinRot * (coordY - (heightsSerialized[normalMapId]/2)) + cosRot * (coordX - (widthsSerialized[normalMapId]/2)) + widthsSerialized[normalMapId]/2);
+                                        coordY = (sinRot * (coordXtmp - (widthsSerialized[normalMapId]/2)) + cosRot * (coordY - (heightsSerialized[normalMapId]/2)) + heightsSerialized[normalMapId]/2);
+                                    }
+                                    int dX = 1;
+                                    int dY = 1;
+                                    float hN = read_imagef(textures, sampler, (int2)(coordX + uvSerialized[normalMapId], coordY)).x;
+                                    float hL = read_imagef(textures, sampler, (int2)(coordX + uvSerialized[normalMapId] - dX, coordY)).x;
+                                    float hR = read_imagef(textures, sampler, (int2)(coordX + uvSerialized[normalMapId] + dX, coordY)).x;
+                                    float hU = read_imagef(textures, sampler, (int2)(coordX + uvSerialized[normalMapId], coordY - dY)).x;
+                                    float hD = read_imagef(textures, sampler, (int2)(coordX + uvSerialized[normalMapId], coordY + dY)).x;
+
+                                    // Gradient in height
+                                    float dX2 = hR - hL;
+                                    float dY2 = hU - hD;
+
+                                    // Construct perturbed normal in tangent space
+                                    //float3 normalTangent = normalize((float3)(-dX2, -dY2, 1.0));
+                                    float3 T;
+                                    if(n2.x < 0.99){
+                                        T = normalize(cross((float3)(0,1,0), n2));
+                                    }else{
+                                        T = normalize(cross((float3)(0,0,1), n2));
+                                    }
+                                    float3 B = normalize(cross(n2, T));
+                                    //float3 perturbedNormal = normalize(TBN_mult(T, B, n2, normalTangent));
+                                    float4 sampledNormal = read_imagef(textures, sampler, (int2)(coordX + uvSerialized[normalMapId], coordY));
+                                    float3 rgbNormal = (float3)(sampledNormal.x, sampledNormal.y, sampledNormal.z) * sampledNormal.w;
+                                    float3 normalTangent = normalize((rgbNormal * 2.0f) - 1.0f);
+                                    float nmult = 1.0f;//min(5.0f/t, 1.0f);
+                                    float3 perturbedNormal = normalize(
+                                        nmult*normalTangent.x * T +
+                                        nmult*normalTangent.y * B +
+                                        normalTangent.z * n2
+                                    );
+                                    n2 = perturbedNormal;
+                                    //float deflator = 300.0f/t;
+                                    //intersection += ((1-normalColor.x)*normalColor.w*n2)/deflator;
+                                    //colort = normalColor;
+                                    textureWidth = widthsSerialized[normalMapId];
+                                    textureHeight = heightsSerialized[normalMapId];
+                                }
+                                if(dispMapId != -1){
+                                    if(!(widthsSerialized[dispMapId] == textureWidth && heightsSerialized[dispMapId] == textureHeight)){
+                                        coordX = ((float)localX/width)*widthsSerialized[normalMapId];
+                                        coordY = ((float)localY/height)*heightsSerialized[normalMapId];
+                                        float sinRot = sin((PI/180)*(float)textureRot);
+                                        float cosRot = cos((PI/180)*(float)textureRot);
+
+                                        if(sinRot < -0.001 || cosRot < -0.001){
+                                            coordX++;
+                                            coordY++;
+                                        }
+
+                                        int coordXtmp = coordX;
+                                        int coordYtmp = coordY;
+                                        coordX = (sinRot * (coordY - (heightsSerialized[normalMapId]/2)) + cosRot * (coordX - (widthsSerialized[normalMapId]/2)) + widthsSerialized[normalMapId]/2);
+                                        coordY = (sinRot * (coordXtmp - (widthsSerialized[normalMapId]/2)) + cosRot * (coordY - (heightsSerialized[normalMapId]/2)) + heightsSerialized[normalMapId]/2);
+                                    }
+                                    float4 sampled = read_imagef(textures, sampler, (int2)(coordX + uvSerialized[normalMapId], coordY));
+                                    //float2 sampledLocal = (float2)();
+                                    float actual = (sampled.x - 0.5)*sampled.w;
+                                    float dampener = 150.0f/t;
+                                    intersection += n3 * actual / dampener;
+                                }
+                                if(colort.w == 0){
+                                    continue;
+                                }
+                                *dist = dist2;
+                                *intersectionRet = intersection;
+                                *objindex = i2;
+                                *normal = n2;
+                                *face = k2;
                                 *color = colort;
                             }
                         }
@@ -610,6 +775,439 @@ inline void rayToObject(
         }
         index++;
     }
+}
+
+float tanh_approx(float x) {
+    float e1 = exp(x);
+    float e2 = exp(-x);
+    return (e1 - e2) / (e1 + e2);
+}
+
+inline void predict_direction(float input[12],     // 12
+                                __global float* W0,        // 12 x 64
+                                __global float* W1,        // 64
+                                __global float* W2,        // 64 x 64
+                                __global float* b0,        // 64
+                                __global float* b1,        // 64 x 3
+                                __global float* b2,        // 3
+                                float* output, bool log)    // 3
+{
+    float h1[64];
+    float h2[64];
+
+    // FC1
+    for (int i = 0; i < 64; i++) {
+        h1[i] = b0[i];
+        for (int j = 0; j < 12; j++) {
+            //if(log && i == 1){
+                //printf("BEFORE %d | %f\n", j, h1[i]);
+            //}
+            h1[i] += input[j] * W0[j * 64 + i];
+        }
+        h1[i] = fmax(h1[i], 0.0f); // ReLU
+    }
+
+    // FC2
+    for (int i = 0; i < 64; i++) {
+        h2[i] = b1[i];
+        for (int j = 0; j < 64; j++) {
+            h2[i] += h1[j] * W1[j * 64 + i];
+        }
+        h2[i] = fmax(h2[i], 0.0f); // ReLU
+    }
+
+    // Output layer
+    for (int i = 0; i < 3; i++) {
+        output[i] = b2[i];
+        for (int j = 0; j < 64; j++) {
+            output[i] += h2[j] * W2[j * 3 + i];
+        }
+    }
+
+    //tanh squash
+    for (int i = 0; i < 3; ++i) {
+        output[i] = tanh_approx(output[i]);
+    }
+}
+
+inline void indirectRay(
+   __global int* indicesSquared,
+   __global int* indicesOfIndices,
+   __global float* allObjectsSerialized,
+   __global int* allIndicesSerialized,
+   const int isSize,
+   const int iiSize,
+   const int aosSize,
+   const int aisSize,
+   __global float* bvhSerialized,
+   __global int* bvhIndices,
+   const int bvhSize,
+   const int bvhIndicesSize,
+   float3 pos,
+   float3 pos2,
+   float3 direction,
+   float3* intersectionRet,
+   float4* color,
+   float* dist,
+   int x,
+   int y,
+   int width,
+   int height,
+   sampler_t sampler,
+   read_only image2d_t textures,
+   __global int* heightsSerialized,
+   __global int* widthsSerialized,
+   __global int* uvSerialized,
+   __global int* texturesSerialized,
+   __global int* textureIndices,
+   int* objindex,
+   int* face,
+   float3* normal,
+   int f,
+   int lightsSize,
+   __global float* lightsSerialized,
+   float kd,
+   float4 ambient,
+   float albedo
+){
+
+   //if(x == width/2 && y == height/2)
+       //printf("%f, %f, %f | %f, %f, %f\n", direction.x, direction.y, direction.z);
+   const int maxSize = 64;
+   int stack[maxSize];
+   stack[0] = 0;
+   int size = 1;
+   int index = 0;
+   while(index < size){
+       int b = index;
+       int end = b + 1 < bvhIndicesSize ? bvhIndices[b + 1] : bvhSize;
+       float3 minBound = (float3)(0.0f, 0.0f, 0.0f);
+       float3 maxBound = (float3)(0.0f, 0.0f, 0.0f);
+       for (int o = bvhIndices[b]; o < bvhIndices[b] + 6; o++) {
+           switch(o - bvhIndices[b]){
+               case 0:
+                   minBound.x = bvhSerialized[o] - pos.x;
+                   break;
+               case 1:
+                   minBound.y = bvhSerialized[o] - pos.y;
+                   break;
+               case 2:
+                   minBound.z = bvhSerialized[o] - pos.z;
+                   break;
+               case 3:
+                   maxBound.x = bvhSerialized[o] - pos.x;
+                   break;
+               case 4:
+                   maxBound.y = bvhSerialized[o] - pos.y;
+                   break;
+               case 5:
+                   maxBound.z = bvhSerialized[o] - pos.z;
+                   break;
+           }
+       }
+       bool intersect = intersectAABB(pos2, -direction, minBound, maxBound);
+
+
+       if(intersect){
+           for (int o = bvhIndices[b] + 6; o < end; o++) {
+               if(bvhSerialized[o] < 0){
+                   int i2 = -(int)(bvhSerialized[o]) - 1;
+                   int startIndice2 = indicesOfIndices[i2];
+
+                   int endIndice2 = aisSize;
+                   int offset2 = indicesSquared[i2];
+                   int endIndiceSquared2 = aosSize - offset2;
+                   if(i2 < isSize - 1){
+                       endIndiceSquared2 = indicesSquared[i2 + 1] - offset2;
+                       endIndice2 = indicesOfIndices[i2 + 1];
+                   }
+
+                   for(int k2 = startIndice2+0; k2 < endIndice2-0; k2++){
+                       if(k2 == f)
+                            continue;
+                       int startIndice22 = allIndicesSerialized[k2] + offset2;
+                       int endIndice22 = endIndiceSquared2 + offset2;
+                       if(k2 < endIndice2 - 1){
+                           endIndice22 = allIndicesSerialized[k2+1] + offset2;
+                       }
+
+                       float3 p12 = (float3)(
+                           allObjectsSerialized[startIndice22 + 0] - pos.x,
+                           allObjectsSerialized[startIndice22 + 1] - pos.y,
+                           allObjectsSerialized[startIndice22 + 2] - pos.z
+                       );
+                       float3 p22 = (float3)(
+                           allObjectsSerialized[startIndice22 + 3] - pos.x,
+                           allObjectsSerialized[startIndice22 + 4] - pos.y,
+                           allObjectsSerialized[startIndice22 + 5] - pos.z
+                       );
+                       float3 p32 = (float3)(
+                           allObjectsSerialized[startIndice22 + 6] - pos.x,
+                           allObjectsSerialized[startIndice22 + 7] - pos.y,
+                           allObjectsSerialized[startIndice22 + 8] - pos.z
+                       );
+                       float3 e1 = p22 - p12;
+                       float3 e2 = p32 - p12;
+                       float3 n2  =normalize(cross(e1, e2));
+                       float3 n3 = n2;
+                       float denom = dot(n2, direction);
+                       if(fabs(denom) < 0.001){
+                           continue;
+                       }
+                       float t = dot(n2, p12 - pos2)/denom;
+                       if(t > -0.01){
+                           continue;
+                       }
+                       float3 intersection = pos2+(direction*t);
+                       float dist2 = /*distance(pos2, intersection)*/-t;
+                       if(dist2 < *dist){
+                            //if(x == width/2 && y == height/2 && *dist < 10000)
+                            if(x == -1 && y == -1){
+                                printf("asd");
+                            }
+
+                           float3 target = (float3)(0,1,0);
+                           float3 axis = normalize(cross(n2, target));
+                           if(axis.x == 0 && axis.y == 0 && axis.z == 0){
+                               axis = target;
+                           }
+                           double angle = acos(min(max(dot(n2, target), -1.0f), 1.0f));
+                           bool inside = false;
+                           float3 fp = rotateAroundIntersection((float3)(
+                               allObjectsSerialized[startIndice22] - pos.x,
+                               allObjectsSerialized[startIndice22 + 1] - pos.y,
+                               allObjectsSerialized[startIndice22 + 2] - pos.z
+                           ), (float3)(0, 0, 0), intersection, axis, angle);
+                           float3 sp = rotateAroundIntersection((float3)(
+                               allObjectsSerialized[startIndice22 + 3] - pos.x,
+                               allObjectsSerialized[startIndice22 + 4] - pos.y,
+                               allObjectsSerialized[startIndice22 + 5] - pos.z
+                           ), (float3)(0, 0, 0), intersection, axis, angle);
+                           float3 fpBelow = (float3)(fp.x, fp.y - 1, fp.z);
+                           float3 n4 = normalize(cross(sp - fp, fpBelow - fp));
+                           float3 target2 = (float3)(0, 0, -1);
+                           float3 axis2 = normalize(cross(n4, target2));
+                           bool rotateTwice = true;
+                           if(axis2.x == 0 && axis2.y == 0 && axis2.z == 0){
+                               //axis2 = target;
+                               rotateTwice = false;
+                           }
+                           //rotateTwice = false;
+                           double angle2 = acos(min(max(dot(n4, target2), -1.0f), 1.0f));
+                           if(rotateTwice){
+                               fp = rotateAroundIntersection(fp, (float3)(0, 0, 0), intersection, axis2, angle2);
+                           }
+                           float3 p = fp;
+                           float3 np;
+                           float maxX = -100000.0;
+                           float maxY = -100000.0;
+                           float minX = 100000.0;
+                           float minY = 100000.0;
+                           for(int j2 = startIndice22; j2 < endIndice22; j2 += 3){
+                               maxX = max(maxX, p.x);
+                               maxY = max(maxY, p.z);
+                               minX = min(minX, p.x);
+                               minY = min(minY, p.z);
+                               if(j2 + 3 < endIndice22){
+                                   np = rotateAroundIntersection((float3)(
+                                        allObjectsSerialized[j2 + 3] - pos.x,
+                                        allObjectsSerialized[j2 + 4] - pos.y,
+                                        allObjectsSerialized[j2 + 5] - pos.z
+                                    ), (float3)(0, 0, 0), intersection, axis, angle);
+                                    if(rotateTwice){
+                                       np = rotateAroundIntersection(np, (float3)(0, 0, 0), intersection, axis2, angle2);
+                                    }
+
+                               }else{
+                                   np = fp;
+                               }
+                               if (fabs((np.x - p.x)*(intersection.z - p.z) - (np.z - p.z)*(intersection.x - p.x)) < 1e-6) {
+                                   inside = true;
+                                   break;
+                               }
+                               if (((np.z > intersection.z) != (p.z > intersection.z)) && (intersection.x < (p.x - np.x) * ((intersection.z - np.z) / (p.z - np.z)) + np.x)) {
+                                   inside = !inside;
+                               }
+                               p = np;
+                           }
+                            if(false)
+                                    printf("%d\n", inside);
+                           if(inside){
+                               //*intersected = true;
+
+                               float4 colort;
+                               int textureId = texturesSerialized[(k2)*6];
+                               int normalMapId = texturesSerialized[(k2)*6 + 2];
+                               //normalMapId = 6;
+                               int dispMapId = texturesSerialized[(k2)*6 + 5];
+                               int textureRot = texturesSerialized[(k2)*6 + 1];
+                               float localX = intersection.x - minX;
+                               float localY = intersection.z - minY;
+                               float width = maxX - minX;
+                               float height = maxY - minY;
+                               int textureWidth = 0;
+                               int textureHeight = 0;
+                               int coordX = 0;
+                               int coordY = 0;
+                               if(textureId == -1){
+                                   colort = (float4)(1, 0, 1, 1);
+                               }else if(textureId == -2){
+                                   colort = (float4)(0, 0, 0, 0);
+                               }else if(textureId > 99999){
+                                   colort = hexToColor(textureId - 100000);
+
+                               }else{
+                                   coordX = ((float)localX/width)*widthsSerialized[textureId];
+                                   coordY = ((float)localY/height)*heightsSerialized[textureId];
+                                   textureWidth = widthsSerialized[textureId];
+                                   textureHeight = heightsSerialized[textureId];
+                                   float sinRot = sin((PI/180)*(float)textureRot);
+                                   float cosRot = cos((PI/180)*(float)textureRot);
+
+                                   if(sinRot < -0.001 || cosRot < -0.001){
+                                       coordX++;
+                                       coordY++;
+                                   }
+
+                                   int coordXtmp = coordX;
+                                   int coordYtmp = coordY;
+                                   coordX = (sinRot * (coordY - (heightsSerialized[textureId]/2)) + cosRot * (coordX - (widthsSerialized[textureId]/2)) + widthsSerialized[textureId]/2);
+                                   coordY = (sinRot * (coordXtmp - (widthsSerialized[textureId]/2)) + cosRot * (coordY - (heightsSerialized[textureId]/2)) + heightsSerialized[textureId]/2);
+
+                                   colort = read_imagef(textures, sampler, (int2)(coordX + uvSerialized[textureId], coordY));
+
+                               }
+                               if(colort.w == 0){
+                                  continue;
+                               }
+                               *dist = dist2;
+                               *intersectionRet = intersection;
+                               *objindex = i2;
+                               *normal = n2;
+                               *face = k2;
+                               *color = colort;
+                           }
+                       }
+
+                   }
+               }else{
+                   //rayToObject((int)(bvhSerialized[o]), indicesSquared, indicesOfIndices, allObjectsSerialized, allIndicesSerialized, isSize, iiSize, aosSize, aisSize, bvhSerialized, bvhIndices, bvhSize, bvhIndicesSize, pos, pos2, direction, intersectionRet, color, dist, x, y, width, height, sampler, textures, widthsSerialized, heightsSerialized, uvSerialized, texturesSerialized, textureIndices, objindex, face);
+                   if(size < maxSize){
+                       stack[size] = bvhSerialized[o];
+                       size++;
+                   }
+               }
+           }
+       }
+       index++;
+   }
+   float3 totalDiffuse = (float3)(0, 0, 0);
+   for(int l = 0; l < lightsSize; l++){
+       float3 light = (float3)(
+           lightsSerialized[l*7],
+           lightsSerialized[l*7 + 1],
+           lightsSerialized[l*7 + 2]
+       ) - pos;
+       float3 lightDir = normalize(light + (float3)(0, 0, 0) - *intersectionRet);
+       float3 lightColor = (float3)(
+           lightsSerialized[l*7 + 3],
+           lightsSerialized[l*7 + 4],
+           lightsSerialized[l*7 + 5]
+       );
+       float lightPower = lightsSerialized[l*7 + 6];
+       //float offset = 0.05;
+
+       float dist = distance(light, *intersectionRet);
+
+       kd *= lightPower;
+       //
+       float diff = fabs(dot(*normal, lightDir));
+       //if(x == width/2 && y == height/2)
+       //printf("%f\n", diff);
+       float3 diffuse = (kd * lightColor * diff)/dist;
+       float magnitude = length(diffuse);
+       if(magnitude < 0.03){
+           diffuse *= 0;
+       }
+
+       float shadow = 0;
+       float3 shadowOut;
+       shadow += isShadow(bvhSerialized, bvhIndices, bvhSize, bvhIndicesSize, *intersectionRet, lightDir, indicesSquared, indicesOfIndices, allObjectsSerialized, allIndicesSerialized, isSize, aosSize, aisSize, *objindex, *face, pos, (float3)(0, 0, 0), light, &shadowOut);
+       totalDiffuse += diffuse*(1-shadow);
+   }
+   float4 lighting = (float4)(totalDiffuse.x, totalDiffuse.y, totalDiffuse.z, 1) + ambient;
+   (*color).x *= lighting.x;
+   (*color).y *= lighting.y;
+   (*color).z *= lighting.z;
+   //(*color) /= max(*dist, 1.0f);
+   *color *= albedo;
+   //isShadow(bvhSerialized, bvhIndices, bvhSize, bvhIndicesSize, inter, lightDir1, indicesSquared, indicesOfIndices, allObjectsSerialized, allIndicesSerialized, isSize, aosSize, aisSize, index, face, pos, pos2, light1, &shadowOut);
+}
+
+inline float3 calcIL(
+   __global int* indicesSquared,
+   __global int* indicesOfIndices,
+   __global float* allObjectsSerialized,
+   __global int* allIndicesSerialized,
+   const int isSize,
+   const int iiSize,
+   const int aosSize,
+   const int aisSize,
+   __global float* bvhSerialized,
+   __global int* bvhIndices,
+   const int bvhSize,
+   const int bvhIndicesSize,
+   float3 pos,
+   float3 pos2,
+   float3 direction,
+   float3* intersectionRet,
+   float4* color,
+   float* dist,
+   int x,
+   int y,
+   int width,
+   int height,
+   sampler_t sampler,
+   read_only image2d_t textures,
+   __global int* heightsSerialized,
+   __global int* widthsSerialized,
+   __global int* uvSerialized,
+   __global int* texturesSerialized,
+   __global int* textureIndices,
+   int* objindex,
+   int* face,
+   float3* normal,
+   int f,
+   int lightsSize,
+   __global float* lightsSerialized,
+   float kd,
+   float4 ambient,
+   float albedo,
+   float3 hemisphere,
+   float3* sampleDirsWorld,
+   int rays,
+   float shininess
+){
+    float3 totalIndirectColor = (float3)(0, 0, 0);
+    for(int r = 0; r < rays; r++){
+         float4 indirectColorR = (float4)(0, 0, 0, 0);
+         float indirectDistR = 1000000000;
+         indirectRay(indicesSquared, indicesOfIndices, allObjectsSerialized, allIndicesSerialized, isSize, iiSize, aosSize, aisSize, bvhSerialized, bvhIndices, bvhSize, bvhIndicesSize, pos, pos2, sampleDirsWorld[r], intersectionRet, &indirectColorR, &indirectDistR, x, y, width, height, sampler, textures, widthsSerialized, heightsSerialized, uvSerialized, texturesSerialized, textureIndices, objindex, face, normal, f, lightsSize, lightsSerialized, kd, ambient, albedo);
+         if(isnan(indirectColorR.x)){
+             indirectColorR = (float4)(0, 0, 0, 0);
+         }
+         indirectColorR = indirectColorR*dot(hemisphere, sampleDirsWorld[r]);
+         float3 indirectColor3R = (float3)(indirectColorR.x, indirectColorR.y, indirectColorR.z);
+
+         float3 indirectDir = sampleDirsWorld[r];
+         float3 reflectionDir = reflect(-indirectDir, hemisphere);
+         float specAngle = max(dot(reflectionDir, -direction), 0.0f);
+         float phongBRDF = (shininess + 2.0f)/(2.0f*PI)*pow(specAngle, shininess);
+         float3 brdf = indirectColor3R * phongBRDF;
+         float falloff = 1.0f / max((4.0f * PI * indirectDistR * indirectDistR), 1.0f);
+         totalIndirectColor += indirectColor3R*falloff*brdf;
+    }
+    return totalIndirectColor;
 }
 
 __kernel void renderPixel(
@@ -647,10 +1245,41 @@ __kernel void renderPixel(
     __global float* lightsSerialized,
 
     const int lightsSize,
-    __global int* textureIndices
+    __global int* textureIndices,
+    __global float* allShadows,
+    float tranVelX,
+    float tranVelY,
+    float tranVelZ,
+    float rotVelX,
+    float rotVelY,
+    float rotVelZ,
+    __global float* irResults,
+    int useReflectDir,
+    float reflectX,
+    float reflectY,
+    float reflectZ,
+    __global float* W0,
+    __global float* W1,
+    __global float* W2,
+    __global float* b0,
+    __global float* b1,
+    __global float* b2,
+    __global float* irLighting
 ){
+
+
     int x = get_global_id(0);
     int y = get_global_id(1);
+    float3 translationalVelocity = (float3)(
+        tranVelX,
+        tranVelY,
+        tranVelZ
+    );
+    float3 rotationalVelocity = (float3)(
+        rotVelX,
+        rotVelY,
+        rotVelZ
+    );
     if((time ==1) == (x%2==0)){
         //return;
     }
@@ -671,27 +1300,10 @@ __kernel void renderPixel(
     }
     int y2 = y;
     int x2 = x;
-   /* if(x == 0 && y == 0){
-        float4 color = read_imagef(textures, sampler, (int2)(254, 254));
-        uchar r = (uchar)(clamp(color.x, 0.0f, 1.0f) * 255.0f);
-        uchar g = (uchar)(clamp(color.y, 0.0f, 1.0f) * 255.0f);
-        uchar b = (uchar)(clamp(color.z, 0.0f, 1.0f) * 255.0f);
-        uchar a = (uchar)(clamp(color.w, 0.0f, 1.0f) * 255.0f);
-        printf("%d %d %d %d\n", r, g, b, a);
-    }*/
 
     //float aspect = width/height;
     float f = 1/tan(((PI/180)*90)/2);
-    //float ndc_x = (x + 0.5)/width*2 - 1;
-    //float ndc_y = 1 - (y + 0.5)/height*2;
-    /*float aspect = (float)width / (float)height;
 
-    float ndc_x = ((float)x + 0.5f) / (float)width * 2.0f - 1.0f;
-    float ndc_y = 1.0f - ((float)y + 0.5f) / (float)height * 2.0f;
-
-    float px = ndc_x * aspect / f;
-    float py = ndc_y / f;
-    float pz = -3;*/
     float aspect = (float)width / (float)height;
     float ndc_x = ((float)x + 0.5f) / (float)width * 2.0f - 1.0f;
     float ndc_y = 1.0f - ((float)y + 0.5f) / (float)height * 2.0f;
@@ -729,9 +1341,6 @@ __kernel void renderPixel(
         posZ
     );
     float3 pos2 = (float3)(0,0,0);
-    //if(x==0&&y==0){
-       // printf("%f\n", pos.x);
-    //}
     float resp = 0;
     bool insideG = false;
     float4 color;
@@ -740,239 +1349,6 @@ __kernel void renderPixel(
     int usedK = -1;
     int faceCount = 0;
     //rayToObject(0);
-    if(false){
-    for(int i = 0; i < isSize; i++)
-    {
-        int startIndice = indicesOfIndices[i];
-
-        int endIndice = aisSize;
-        int offset = indicesSquared[i];
-        int endIndiceSquared = aosSize - offset;
-        if(i < isSize - 1){
-            endIndiceSquared = indicesSquared[i + 1] - offset;
-            endIndice = indicesOfIndices[i + 1];
-        }
-
-        for(int k = startIndice + 0; k < endIndice; k++){
-            //each face
-            //printf("%d\n", k);
-            int textureId = texturesSerialized[faceCount*2];
-            int textureRot = texturesSerialized[faceCount*2 + 1];
-
-
-            if(x == width/2 && y == height/2){
-                //printf("%f, %f, %f, %f\n", cosRot);
-            }
-            faceCount++;
-            if(x == 0&& y==0){
-                //printf("Texture: %d\n", textureRot);
-            }
-
-            int startIndice2 = allIndicesSerialized[k] + offset;
-            int endIndice2 = endIndiceSquared + offset;
-            if(k < endIndice - 1){
-                endIndice2 = allIndicesSerialized[k+1] + offset;
-            }
-            if(k != 6 && x == 0 && y == 0){
-                //printf("%d, %d, %d\n", k, endIndice2 - startIndice2, endIndice2);
-            }
-
-            float3 p1 = (float3)(
-                allObjectsSerialized[startIndice2 + 0] - pos.x,
-                allObjectsSerialized[startIndice2 + 1] - pos.y,
-                allObjectsSerialized[startIndice2 + 2] - pos.z
-            );
-            float3 p2 = (float3)(
-                allObjectsSerialized[startIndice2 + 3] - pos.x,
-                allObjectsSerialized[startIndice2 + 4] - pos.y,
-                allObjectsSerialized[startIndice2 + 5] - pos.z
-            );
-            float3 p3 = (float3)(
-                allObjectsSerialized[startIndice2 + 6] - pos.x,
-                allObjectsSerialized[startIndice2 + 7] - pos.y,
-                allObjectsSerialized[startIndice2 + 8] - pos.z
-            );
-            if(x == 0 && y == 0){
-                //printf("%d\n", p2.x);
-            }
-            float3 v1 = p2 - p1;
-            float3 v2 = p3 - p1;
-            float3 n = normalize(cross(v1, v2));
-            float denom = dot(n, direction);
-            if(fabs(denom) < 0.001){
-                continue;
-            }
-            float t = dot(n, p1-pos2)/denom;
-            //if(t < 0){
-
-            float3 intersection = pos2 + (direction*t);
-            //float t;
-            //float3 intersection;
-            //intersect_triangle(pos, direction, p1, p2, p3, &t, &intersection);
-
-            if(-t > minT || -t < 0){
-                continue;
-            }
-            //if(x == 0 && y == height/2 - 40 && k == 2){
-              //      printf("%f,%f, %d\n",-t, minT, k);
-            //}
-            float3 target = (float3)(0,1,0);
-            float3 axis = normalize(cross(n, target));
-            if(axis.x == 0 && axis.y == 0 && axis.z == 0){
-                axis = target;
-            }
-            double angle = acos(min(max(dot(n, target), -1.0f), 1.0f));
-            bool inside = false;
-            int c = 0;
-            float3 fp = rotateAroundIntersection((float3)(
-                allObjectsSerialized[startIndice2] - pos.x,
-                allObjectsSerialized[startIndice2 + 1] - pos.y,
-                allObjectsSerialized[startIndice2 + 2] - pos.z
-            ), pos2, intersection, axis, angle);
-            float3 p = fp;
-            float3 np;
-            float maxX = -100000.0;
-            float maxY = -100000.0;
-            float minX = 100000.0;
-            float minY = 100000.0;
-            //if(x == 0 && y == 0){
-           // printf("rendering");
-            for(int j = startIndice2; j < endIndice2; j += 3){
-
-                maxX = max(maxX, p.x);
-                maxY = max(maxY, p.z);
-                minX = min(minX, p.x);
-                minY = min(minY, p.z);
-
-                //maxX = p.x;
-                //maxY = p.y;
-                //minX = p.x;
-                //minY = p.y;
-
-                if(j + 3 < endIndice2){
-                    np = rotateAroundIntersection((float3)(
-                         allObjectsSerialized[j + 3] - pos.x,
-                         allObjectsSerialized[j + 4] - pos.y,
-                         allObjectsSerialized[j + 5] - pos.z
-                     ), pos2, intersection, axis, angle);
-                }else{
-                    np = fp;
-                }
-
-                if (fabs((np.x - p.x)*(intersection.z - p.z) - (np.z - p.z)*(intersection.x - p.x)) < 1e-6) {
-                    inside = true;
-                    break;
-                }
-                if (((np.z > intersection.z) != (p.z > intersection.z)) && (intersection.x < (p.x - np.x) * ((intersection.z - np.z) / (p.z - np.z)) + np.x)) {
-                    inside = !inside;
-                }
-                if(j == startIndice2 + 6){
-                    resp = p.z;
-                }
-
-                p = np;
-            }
-
-            if(inside){
-                bool overallLP = 0;
-                float3 overallDiffuse = (float3)(0, 0, 0);
-                for(int l = 0; l < lightsSize; l++){
-                    float3 light = (float3)(
-                        lightsSerialized[l*7],
-                        lightsSerialized[l*7 + 1],
-                        lightsSerialized[l*7 + 2]
-                    ) - pos;
-                    float3 lightColor = (float3)(
-                        lightsSerialized[l*7 + 3],
-                        lightsSerialized[l*7 + 4],
-                        lightsSerialized[l*7 + 5]
-                    );
-                    float lightPower = lightsSerialized[l*7 + 6];
-                    float3 lightDir = normalize(light - intersection);
-                    float dist = distance(light, intersection);
-                    float kd = 1;
-                    kd *= lightPower;
-                    float diff = fabs(dot(n, lightDir));
-                    float3 diffuse = (kd * lightColor * diff)/dist;
-                    float magnitude = length(diffuse);
-                    if(magnitude < 0.03){
-                        continue;
-                    }
-                    bool shadow = false;
-                    int count = 0;
-                    int tmp1 = 0;
-                    int tmp2 = 0;
-                    float3 shadowOut;
-                    shadow = isShadow(bvhSerialized, bvhIndices, bvhSize, bvhIndicesSize, intersection, lightDir, indicesSquared, indicesOfIndices, allObjectsSerialized, allIndicesSerialized, isSize, aosSize, aisSize, i, k, pos, pos2, light, &shadowOut);
-                    if(shadow){
-                        continue;
-                    }
-                    overallLP += lightPower;
-                    overallDiffuse += diffuse;
-                }
-
-                float ka = 0.2;
-                float ks = 1;
-
-                float lightPower = 4;
-                ks *= overallLP;
-                float3 ambient = ka * (float3)(0.79f, 0.89f, 1);
-
-
-                float3 reflectDir = reflect(-direction, n);
-                //float spec = pow(max(dot(direction, reflectDir), 0.0f), 5.0f)/(dist*dist);
-                //float3 specular = ks*lightColor*spec;
-                float3 specular = (float3)(0, 0, 0);
-                float localX = intersection.x - minX;
-                float localY = intersection.z - minY;
-                float width = maxX - minX;
-                float height = maxY - minY;
-
-                float4 colort;
-                if(textureId == -1){
-                    colort = (float4)(1, 0, 1, 1);
-                }else if(textureId == -2){
-                    colort = (float4)(0, 0, 0, 0);
-                }else{
-                    int coordX = ((float)localX/width)*widthsSerialized[textureId];
-                    int coordY = ((float)localY/height)*heightsSerialized[textureId];
-                    float sinRot = sin((PI/180)*(float)textureRot);
-                    float cosRot = cos((PI/180)*(float)textureRot);
-
-                    int coordXtmp = coordX;
-                    int coordYtmp = coordY;
-                    coordX = (sinRot * (coordY - (heightsSerialized[textureId]/2)) + cosRot * (coordX - (widthsSerialized[textureId]/2)) + widthsSerialized[textureId]/2);
-                    coordY = (sinRot * (coordXtmp - (widthsSerialized[textureId]/2)) + cosRot * (coordY - (heightsSerialized[textureId]/2)) + heightsSerialized[textureId]/2);
-                    if(sinRot < -0.001 || cosRot < -0.001){
-                        //coordX--;
-                        coordY--;
-                    }
-                    colort = read_imagef(textures, sampler, (int2)(coordX + uvSerialized[textureId] - 1, coordY));
-
-                }
-                float3 lighting = ambient + overallDiffuse + specular;
-                colort.x *= (lighting.x);
-                colort.y *= (lighting.y);
-                colort.z *= (lighting.z);
-                //intersection += ((float)((1-colort.x) - 0.5))/(150/t) * n;
-
-                if(colort.w == 0.00){
-                    //color = (float4)(0, 0, 0, 0);
-                }else{
-                    color = colort;
-                    colorDefined = true;
-                    usedK = k;
-                    minT = -t;
-                }
-                inter = (float3)(intersection.x, intersection.y, intersection.z);
-            }else{
-                //inter = (float3)(0, 0, 0);
-            }
-            insideG = insideG ? insideG : inside;
-            //}
-        }
-    }
-    }
     float dist = 1000000000;
     int index;
     int face;
@@ -989,9 +1365,180 @@ __kernel void renderPixel(
     if(!collision){
         return;
     }
+    float3 indirectNormal = (float3)(0, 0, 0);
+    float4 indirectColor = (float4)(0, 0, 0, 0);
+    float4 indirectColor1 = (float4)(0, 0, 0, 0);
+    float4 indirectColor2 = (float4)(0, 0, 0, 0);
+    float3 indirectInter;
+    int indirectIndex;
+    int indirectFace;
+    float indirectDist = 1000000000;
     float ka = 0.2;
     float ks = 1;
-    float kd = 1;
+    float kd = 1.0f;
+    float3 ambient = ka * (float3)(0.79f, 0.89f, 1);
+    float3 R = reflect(direction, n);
+    float shininess =0.5f;
+    float albedo = 0.3f;
+    const int rays = 64;
+    float3 sampleDirsWorld[rays];
+
+    float3 sampleDirWorld;
+    float3 sampleDirWorld2;
+    float3 hemisphere = n;
+    if(dot(hemisphere, R) < 0){
+        hemisphere = -hemisphere;
+    }
+    if(useReflectDir){
+        sampleDirWorld = staticFromHemisphere(hemisphere, reflectX, reflectY, reflectZ);
+        sampleDirWorld2 = sampleDirWorld;
+    }else{
+        for(int r = 0; r < rays; r++){
+             sampleDirsWorld[r] = randomFromHemisphere(R, shininess, time/(r+1));
+        }
+        //sampleDirWorld = randomFromHemisphere(R, shininess, time);
+        //sampleDirWorld2 = randomFromHemisphere(R, shininess, time/10);
+       // float input1[12] = {albedo, inter.x + pos.x, inter.y + pos.y, inter.z + pos.z, n.x, n.y, n.z, 0, shininess, direction.x, direction.y, direction.z};
+        //float output1[3];
+        //predict_direction(input1, W0, W1, W2, b0, b1, b2, output1, x == width/2 && y == height/2);
+        //float3 outvec = normalize((float3)(output1[0], output1[1], output1[2]));
+        //outvec = normalize(/*(float3)(-0.5, 0, 0.1)*/outvec);
+        //sampleDirWorld = staticFromHemisphere(hemisphere, outvec.x, outvec.y, outvec.z);
+       // float tmp = sampleDirWorld.y;
+        //sampleDirWorld.y = fabs(sampleDirWorld.y);
+
+    }
+
+    float4 indirectColorR = (float4)(0, 0, 0, 0);
+    float indirectDistR = 1000000000;
+    float3 totalIndirectColor = calcIL(indicesSquared, indicesOfIndices, allObjectsSerialized, allIndicesSerialized, isSize, iiSize, aosSize, aisSize, bvhSerialized, bvhIndices, bvhSize, bvhIndicesSize, pos, inter, direction, &indirectInter, &indirectColorR, &indirectDistR, x, y, width, height, sampler, textures, widthsSerialized, heightsSerialized, uvSerialized, texturesSerialized, textureIndices, &indirectIndex, &indirectFace, &indirectNormal, face, lightsSize, lightsSerialized, kd, (float4)(ambient.x, ambient.y, ambient.z, 1), albedo, hemisphere, &sampleDirsWorld, rays, shininess);
+
+    if(time > 1){
+        int blurOffsetIR = 2;
+        int modifiedBlurOffsetIR = min((((float)blurOffsetIR)/(dist/10)), 7.0f);
+        int directionsIR = 4;
+        int validDirectionsIR = 0;
+        if(x > modifiedBlurOffsetIR && y > modifiedBlurOffsetIR && y < height - modifiedBlurOffsetIR && x < width - modifiedBlurOffsetIR && modifiedBlurOffsetIR != 0){
+            int tx;
+            int ty;
+            float3 tmpIR = totalIndirectColor;
+            for(int i = 0; i < directionsIR; i++){
+                float3 variableIR;
+                switch(i%4){
+                    case 0:
+                        tx = x + modifiedBlurOffsetIR;
+                        ty = y;
+                        variableIR = (float3)(
+                            irLighting[((int)(width*(ty) + (tx))*6 + 0)],
+                            irLighting[((int)(width*(ty) + (tx))*6 + 1)],
+                            irLighting[((int)(width*(ty) + (tx))*6 + 2)]
+                        );
+                        break;
+                    case 1:
+                        tx = x - modifiedBlurOffsetIR;
+                        ty = y;
+                        variableIR = (float3)(
+                            irLighting[((int)(width*(ty) + (tx))*6 + 0)],
+                            irLighting[((int)(width*(ty) + (tx))*6 + 1)],
+                            irLighting[((int)(width*(ty) + (tx))*6 + 2)]
+                        );
+                        break;
+                    case 2:
+                        tx = x;
+                        ty = y + modifiedBlurOffsetIR;
+                        variableIR = (float3)(
+                            irLighting[((int)(width*(ty) + (tx))*6 + 0)],
+                            irLighting[((int)(width*(ty) + (tx))*6 + 1)],
+                            irLighting[((int)(width*(ty) + (tx))*6 + 2)]
+                        );
+                        break;
+                    case 3:
+                        tx = x;
+                        ty = y - modifiedBlurOffsetIR;
+                        variableIR = (float3)(
+                            irLighting[((int)(width*(ty) + (tx))*6 + 0)],
+                            irLighting[((int)(width*(ty) + (tx))*6 + 1)],
+                            irLighting[((int)(width*(ty) + (tx))*6 + 2)]
+                        );
+                        break;
+                }
+                if(dot(normalize(variableIR), normalize(tmpIR)) > 0.5 && dot(n, (float3)(irLighting[((int)(width*(ty) + (tx))*6 + 3)],  irLighting[((int)(width*(ty) + (tx))*6 + 4)],  irLighting[((int)(width*(ty) + (tx))*6 + 5)])) > 0.9){
+                    totalIndirectColor += variableIR;
+                    validDirectionsIR++;
+                }
+                //if(x == width/2 && y == height/2){
+                   // printf("%f\n", irLighting[((int)(width*(ty) + (tx))*6 + 0)]);
+                //}
+            }
+
+            totalIndirectColor /= (validDirectionsIR+1);
+        }
+    }
+    if(x == width/2 && y == height/2 && false){
+        printf("%f, %f, %f, %f, %f, %f\n",
+        irLighting[6*(y*width + x) + 0],
+        irLighting[6*(y*width + x) + 1],
+        irLighting[6*(y*width + x) + 2],
+        irLighting[6*(y*width + x) + 3],
+        irLighting[6*(y*width + x) + 4],
+        irLighting[6*(y*width + x) + 5]
+        );
+    }
+    irLighting[6*(y*width + x) + 0] = totalIndirectColor.x;
+    irLighting[6*(y*width + x) + 1] = totalIndirectColor.y;
+    irLighting[6*(y*width + x) + 2] = totalIndirectColor.z;
+    irLighting[6*(y*width + x) + 3] = n.x;
+    irLighting[6*(y*width + x) + 4] = n.y;
+    irLighting[6*(y*width + x) + 5] = n.z;
+    //indirectRay(indicesSquared, indicesOfIndices, allObjectsSerialized, allIndicesSerialized, isSize, iiSize, aosSize, aisSize, bvhSerialized, bvhIndices, bvhSize, bvhIndicesSize, pos, inter, sampleDirWorld, &indirectInter, &indirectColor1, &indirectDist, x, y, width, height, sampler, textures, widthsSerialized, heightsSerialized, uvSerialized, texturesSerialized, textureIndices, &indirectIndex, &indirectFace, &indirectNormal, face, lightsSize, lightsSerialized, kd, (float4)(ambient.x, ambient.y, ambient.z, 1), albedo);
+    //indirectRay(indicesSquared, indicesOfIndices, allObjectsSerialized, allIndicesSerialized, isSize, iiSize, aosSize, aisSize, bvhSerialized, bvhIndices, bvhSize, bvhIndicesSize, pos, inter, sampleDirWorld2, &indirectInter, &indirectColor2, &indirectDist, x, y, width, height, sampler, textures, widthsSerialized, heightsSerialized, uvSerialized, texturesSerialized, textureIndices, &indirectIndex, &indirectFace, &indirectNormal, face, lightsSize, lightsSerialized, kd, (float4)(ambient.x, ambient.y, ambient.z, 1), albedo);
+
+
+    //if(isnan(indirectColor.x)){
+    //    indirectColor = (float4)(0, 0, 0, 0);
+    //}
+
+    //float3 indirectColor3 = (float3)(indirectColor.x, indirectColor.y, indirectColor.z);
+
+
+
+    if(x == width/2 && y == height/2){
+        //if(length(indirectColor3) > 0.5)
+            //printf("%f %f %f | %f %f %f | %f %f %f | %f %f %f | %f\n", sampleDirWorld.x, sampleDirWorld.y, sampleDirWorld.z, hemisphere.x, hemisphere.y, hemisphere.z, inter.x + pos.x, inter.y + pos.y, inter.z + pos.z, n.x, n.y, n.z, length(indirectColor3));
+        irResults[0] = length(indirectColor1);
+        irResults[1] = inter.x + pos.x;
+        irResults[2] = inter.y + pos.y;
+        irResults[3] = inter.z + pos.z;
+        irResults[4] = randomFromHemisphere(R, shininess, time).x;
+        irResults[5] = sampleDirWorld.y;
+        irResults[6] = sampleDirWorld.z;
+        irResults[7] = 1.0f;
+        irResults[8] = shininess;
+        irResults[9] = hemisphere.x;
+        irResults[10] = hemisphere.y;
+        irResults[11] = hemisphere.z;
+        irResults[12] = R.x;
+        irResults[13] = R.y;
+        irResults[14] = R.z;
+        irResults[15] = isnan(length(indirectColor2)) ? 0.0f : length(indirectColor2);
+        irResults[16] = inter.x;
+        irResults[17] = inter.y;
+        irResults[18] = inter.z;
+        irResults[19] = sampleDirWorld2.x;
+        irResults[20] = sampleDirWorld2.y;
+        irResults[21] = sampleDirWorld2.z;
+        irResults[22] = 1.0f;
+        irResults[23] = shininess;
+        irResults[24] = n.x;
+        irResults[25] = n.y;
+        irResults[26] = n.z;
+        irResults[27] = direction.x;
+        irResults[28] = direction.y;
+        irResults[29] = direction.z;
+    }
+
+
+
     bool overallLP = 0;
     float3 overallDiffuse = (float3)(0, 0, 0);
     for(int l = 0; l < lightsSize; l++){
@@ -1000,17 +1547,51 @@ __kernel void renderPixel(
             lightsSerialized[l*7 + 1],
             lightsSerialized[l*7 + 2]
         ) - pos;
+        float3 lightDir = normalize(light + (float3)(0, 0, 0) - inter);
+        float radius = 200;
+        float theta = random(time) * PI * 2;
+        float u = random(time);
+        float r = radius*sqrt(u);
+        float2 offsetVector = (float2)(r*cos(theta), r*sin(theta));
+        float3 tmp = fabs(n.z) < 0.99 ? (float3)(0, 0, 1) : (float3)(1, 0, 0);
+        float3 u2 = normalize(cross(lightDir, tmp));
+        float3 v = normalize(cross(lightDir, u2));
+        float3 offsetVector3d = offsetVector.x*u2 + offsetVector.y*v;
+        float temp = offsetVector3d.y;
+        offsetVector3d.y = offsetVector3d.z;
+        offsetVector3d.z = temp;
+        float3 offsetVector3d2 = -offsetVector3d;
+       //if(width/2 == x && height/2 == y){
+           //printf("%f, %f, %f\n", theta);
+        //}
+
+        float3 light1 = (float3)(
+            lightsSerialized[l*7] + offsetVector3d.x,
+            lightsSerialized[l*7 + 1],
+            lightsSerialized[l*7 + 2] + offsetVector3d.y
+        ) - pos;
+        float3 light2 = (float3)(
+            lightsSerialized[l*7] + offsetVector3d2.x,
+            lightsSerialized[l*7 + 1],
+            lightsSerialized[l*7 + 2] + offsetVector3d2.y
+        ) - pos;
         float3 lightColor = (float3)(
             lightsSerialized[l*7 + 3],
             lightsSerialized[l*7 + 4],
             lightsSerialized[l*7 + 5]
         );
         float lightPower = lightsSerialized[l*7 + 6];
-        float3 lightDir = normalize(light - inter);
+        //float offset = 0.05;
+
+        float3 lightDir1 = normalize(light1 + (float3)(0, 0, 0) - inter);
+        float3 lightDir2 = normalize(light2 + (float3)(0, 0, 0) - inter);
         float dist = distance(light, inter);
 
         kd *= lightPower;
         float diff = fabs(dot(n, lightDir));
+        //diff = 0.5;
+        //if(x == width/2 && y == height/2)
+        //printf("%f\n", diff);
         float3 diffuse = (kd * lightColor * diff)/dist;
         float magnitude = length(diffuse);
         if(magnitude < 0.03){
@@ -1021,17 +1602,118 @@ __kernel void renderPixel(
         int tmp1 = 0;
         int tmp2 = 0;
         float3 shadowOut;
-        shadow = isShadow(bvhSerialized, bvhIndices, bvhSize, bvhIndicesSize, inter, lightDir, indicesSquared, indicesOfIndices, allObjectsSerialized, allIndicesSerialized, isSize, aosSize, aisSize, index, face, pos, pos2, light, &shadowOut);
+
+        shadow += isShadow(bvhSerialized, bvhIndices, bvhSize, bvhIndicesSize, inter, lightDir1, indicesSquared, indicesOfIndices, allObjectsSerialized, allIndicesSerialized, isSize, aosSize, aisSize, index, face, pos, pos2, light1, &shadowOut);
+        shadow += isShadow(bvhSerialized, bvhIndices, bvhSize, bvhIndicesSize, inter, lightDir2, indicesSquared, indicesOfIndices, allObjectsSerialized, allIndicesSerialized, isSize, aosSize, aisSize, index, face, pos, pos2, light2, &shadowOut);
+
+        shadow /= 2;
+        //if(time > 2){
+        //    shadow += allShadows[width*y + x];
+         //   shadow /= 2;
+        //}
+
+
 
         overallLP += (1-shadow)*lightPower;
         overallDiffuse += (1-shadow)*diffuse;
     }
+    bool firstTime = time == 0;
+    float quality = 100.0f;
+    bool notMoving = length(translationalVelocity) < 0.1 && length(rotationalVelocity) < 5;
+    if(!firstTime && notMoving && !useReflectDir){
+        if(!notMoving){
+            quality = 5.0f;
+        }
+        float3 prevDiffuse = (float3)(
+            allShadows[(width*y + x)*3 + 0],
+            allShadows[(width*y + x)*3 + 1],
+            allShadows[(width*y + x)*3 + 2]
+        );
+        overallDiffuse += prevDiffuse - (prevDiffuse/quality);
+        allShadows[(width*y + x)*3 + 0] = overallDiffuse.x;
+        allShadows[(width*y + x)*3 + 1] = overallDiffuse.y;
+        allShadows[(width*y + x)*3 + 2] = overallDiffuse.z;
+        overallDiffuse /= quality;
+    }else{
+        allShadows[(width*y + x)*3 + 0] = overallDiffuse.x*quality;
+        allShadows[(width*y + x)*3 + 1] = overallDiffuse.y*quality;
+        allShadows[(width*y + x)*3 + 2] = overallDiffuse.z*quality;
+    }
+    int blurOffset = 5;
+    int modifiedBlurOffset = min((((float)blurOffset)/(dist/10)), 7.0f);
+    int directions= 4;
+    int validDirections = 0;
+    if(x == width/2 && y == height/2){
+        //printf("%d\n", modifiedBlurOffset);
+    }
+    if(x > modifiedBlurOffset && y > modifiedBlurOffset && y < height - modifiedBlurOffset && x < width - modifiedBlurOffset && modifiedBlurOffset != 0){
+        int tx;
+        int ty;
+        float3 tmpDiffuse = overallDiffuse;
+        for(int i = 0; i < directions; i++){
+            float3 variableDiffuse;
+            switch(i%4){
+                case 0:
+                    tx = x + modifiedBlurOffset;
+                    ty = y;
+                    variableDiffuse = (float3)(
+                        allShadows[((int)(width*(ty) + (tx))*3 + 0)]/quality,
+                        allShadows[((int)(width*(ty) + (tx))*3 + 1)]/quality,
+                        allShadows[((int)(width*(ty) + (tx))*3 + 2)]/quality
+                    );
+                    break;
+                case 1:
+                    tx = x - modifiedBlurOffset;
+                    ty = y;
+                    variableDiffuse = (float3)(
+                        allShadows[((int)(width*(ty) + (tx))*3 + 0)]/quality,
+                        allShadows[((int)(width*(ty) + (tx))*3 + 1)]/quality,
+                        allShadows[((int)(width*(ty) + (tx))*3 + 2)]/quality
+                    );
+                    break;
+                case 2:
+                    tx = x;
+                    ty = y + modifiedBlurOffset;
+                    variableDiffuse = (float3)(
+                        allShadows[((int)(width*(ty) + (tx))*3 + 0)]/quality,
+                        allShadows[((int)(width*(ty) + (tx))*3 + 1)]/quality,
+                        allShadows[((int)(width*(ty) + (tx))*3 + 2)]/quality
+                    );
+                    break;
+                case 3:
+                    tx = x;
+                    ty = y - modifiedBlurOffset;
+                    variableDiffuse = (float3)(
+                        allShadows[((int)(width*(ty) + (tx))*3 + 0)]/quality,
+                        allShadows[((int)(width*(ty) + (tx))*3 + 1)]/quality,
+                        allShadows[((int)(width*(ty) + (tx))*3 + 2)]/quality
+                    );
+                    break;
+            }
+            //if(y == height/2 && x == width/2){
+            //    printf("%f\n", fabs(length(tmpDiffuse) - length(variableDiffuse)));
+            //}
+            if(fabs(length(tmpDiffuse) - length(variableDiffuse)) < 0.35){
+                overallDiffuse += variableDiffuse;
+                validDirections++;
+            }
 
-    float3 ambient = ka * (float3)(0.79f, 0.89f, 1);
+        }
+        overallDiffuse /= (validDirections+1);
+    }
+
+    //overallDiffuse *= 0;
+
+    //indirectColor3 = indirectColor3/max(4 * PI * indirectDist*indirectDist, 1.0);
+
+    //if(x == width/2 && y == height/2){
+       // printf("%f\n", length(indirectColor3));
+
+    //}
     float3 lighting = ambient + overallDiffuse;
-    color.x *= lighting.x;
-    color.y *= lighting.y;
-    color.z *= lighting.z;
+    color.x *= lighting.x + totalIndirectColor.x;
+    color.y *= lighting.y + totalIndirectColor.y;
+    color.z *= lighting.z + totalIndirectColor.z;
     output[(get_global_id(1) * width + get_global_id(0))*4 + 0] = inter.x;
     output[(get_global_id(1) * width + get_global_id(0))*4 + 1] = inter.y;
     output[(get_global_id(1) * width + get_global_id(0))*4 + 2] = inter.z;
@@ -1087,11 +1769,6 @@ __kernel void renderPixel(
         }
         //image[vy*width + vx] = (uchar4)(0, 0, 255, 255);
 
-    }else{
-        //image[vy*width + vx] = (uchar4)(0, 0, 0, 255);
     }
-    //if(abs(x - (width/2-50)) < 3 && abs(y - (height/2)) < 3){
-    //    image[y*width + x] = (uchar4)(255, 255, 255, 255);
-    //}
 }
 

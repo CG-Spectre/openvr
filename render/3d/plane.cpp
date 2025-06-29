@@ -83,6 +83,10 @@ void plane::render(SDL_Renderer *renderer) {
 
 }
 
+void plane::render(SDL_Renderer * renderer, Vector3d vector3d, Vector3d rotational_velocity) {
+
+}
+
 
 SerializedObject plane::getSerializedFaces(float tx, float ty, float tz) {
     //std::cout << tx << std::endl;
@@ -100,6 +104,10 @@ SerializedObject plane::getSerializedFaces(float tx, float ty, float tz) {
         //std::cout << faces[faceIndex]->getVertices()->size() << std::endl;
         texturesSerialized.push_back(faces[faceIndex]->textureId);
         texturesSerialized.push_back(faces[faceIndex]->textureRotation);
+        texturesSerialized.push_back(faces[faceIndex]->normalMap);
+        texturesSerialized.push_back(faces[faceIndex]->specularMap);
+        texturesSerialized.push_back(faces[faceIndex]->reflectionMap);
+        texturesSerialized.push_back(faces[faceIndex]->displacementMap);
         for (int k = 0; k < faces[faceIndex]->getVertices()->size(); k++) {
             Vector3d posNS = *faces[faceIndex]->getVertices()->at(k)->getPose() + this->pos.pose;
             facesTrulySerialized.push_back(posNS.x);

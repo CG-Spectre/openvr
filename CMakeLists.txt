@@ -61,6 +61,10 @@ add_executable(openvr main.cpp
         render/3d/light.cpp
         render/3d/light.h
         render/3d/model.cpp
-        render/3d/model.h)
+        render/3d/model.h
+        pipe_server.cpp
+        pipe_server.h
+        render/GPU/ml.cpp
+        render/GPU/ml.h)
 target_include_directories(openvr PRIVATE ${glm_SOURCE_DIR})
 target_link_libraries(openvr PRIVATE SDL3::SDL3 ${OpenCL_LIBRARIES} opengl32 gdi32 ${GLEW_LIBRARY} glm)

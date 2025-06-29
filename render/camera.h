@@ -21,14 +21,38 @@ public:
     Pose3d* getPos();
     BVHNode rootBVH;
     void addLight(light *light);
+    void stop();
+    void init();
+    void render(SDL_Renderer * renderer, Vector3d vector3d, Vector3d rotational_velocity) override;
+    void setReflectDir(Vector3d* direction);
+    struct indirectLightingResult{
+        float radiance;
+        float interX;
+        float interY;
+        float interZ;
+        float sampleX;
+        float sampleY;
+        float sampleZ;
+        float albedo;
+        float shininess;
+        float normalX;
+        float normalY;
+        float normalZ;
+        float reflectX;
+        float reflectY;
+        float reflectZ;
+    };
 private:
-    bool time = false;
+    int time = 0;
     int prevWidth;
     int prevHeight;
     Pose3d pos;
     renderStack stack;
     renderStack lightStack;
     std::vector<light *> lights;
+    bool useReflectDir = false;
+    Vector3d *reflectDir;
+    std::vector<indirectLightingResult> allILResults;
 };
 
 

@@ -24,3 +24,20 @@ void Face3d::setTextureId(int id) {
 void Face3d::setTextureRotation(int rot) {
     this->textureRotation = rot;
 }
+
+void Face3d::setNormalMap(int id) {
+    this->normalMap = id;
+}
+
+void Face3d::setSpecularMap(int id) {
+    this->specularMap = id;
+}
+
+void Face3d::setReflectionMap(int id) {
+    this->reflectionMap = id;
+}
+
+void Face3d::setDisplacementMap(int id) {
+    this->displacementMap = id;
+}
+

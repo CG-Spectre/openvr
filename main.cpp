@@ -2,6 +2,8 @@
 #include <SDL3/SDL.h>
 #include <SDL3/SDL_main.h>
 #include <iostream>
+
+#include "pipe_server.h"
 #include "GL/glew.h"
 #include "render/camera.h"
 #include "render/renderDummy.h"
@@ -16,6 +18,17 @@
 
 int width, height;
 int main(int argc, char* argv[]) {
+    bool controlserver = false;
+    bool useReflectDir = false;
+    Vector3d reflectDir = Vector3d(0, 0, 0);
+    Pose3d pos(0, 0, 0, 0, 0.1, 0);
+    if (controlserver) {
+        std::thread pipeserver([&pos, &reflectDir]() {
+            pipe_server::start(&pos, &reflectDir);
+        });
+        pipeserver.detach();
+    }
+    //auto reflectDir = std::make_shared<Vector3d>;
     if (SDL_Init(SDL_INIT_VIDEO) < 0) {
         std::cerr << "SDL initialization failed: " << SDL_GetError() << std::endl;
         return 1;
@@ -59,8 +72,11 @@ int main(int argc, char* argv[]) {
     texManager.addTexture("Avatar_Aang.png");
     texManager.addTexture("fire_0.png");
     texManager.addTexture("bricks.jpg");
-    texManager.addTexture("bricksnormal.jpg");
+    texManager.addTexture("bricks_normal.png");
     texManager.addTexture("tiles.png");
+    texManager.addTexture("grass_top.png");
+    texManager.addTexture("gbn.png");
+    texManager.addTexture("bricks_displacement.jpg");
     //texManager.addTexture("grass_block_side.png");
     texManager.initialize();
     gpu::initialize(texManager);
@@ -70,29 +86,43 @@ int main(int argc, char* argv[]) {
     SDL_Event event;
     renderStack stack;
     camera cam(Pose3d(0, 0, 0, 0, 0.1, 0));
-    model cubeModel("cube", Pose3d(Vector3d(0, 0, -3), Vector3d(0, 0, 0)));
+    if (useReflectDir) {
+        cam.setReflectDir(&reflectDir);
+    }
+    cam.init();
+    model cubeModel("cube", Pose3d(Vector3d(0, 0, 4), Vector3d(0, 180, 0)), 1);
+    //model cubeModel2("cube", Pose3d(Vector3d(0, 0, -2), Vector3d(0, 0, 0)));
     model pyramidModel("pyramid", Pose3d(Vector3d(0, 0, -3), Vector3d(0, 0, 0)));
     model customModel("test", Pose3d(Vector3d(0, 0, -3), Vector3d(0, 0, 0)));
-    cam.addObject(new cube(Pose3d(Vector3d(0, 0, 8), Vector3d(0, 0, 0)), 1));
-    cam.addObject(new cube(Pose3d(Vector3d(-4, 0, 8), Vector3d(0, 0, 0)), 1));
-    cam.addObject(new cube(Pose3d(Vector3d(4, 0, 8), Vector3d(0, 0, 0)), 1));
-    cam.addObject(new plane(Pose3d(Vector3d(0, -0.5, 0), Vector3d(0, 0, 0)), 100));
-    cam.addObject(new plane(Pose3d(Vector3d(0, 0, 3), Vector3d(-90, 0, 0)), 1, 1));
-    cam.addObject(new plane(Pose3d(Vector3d(0, 2, 6), Vector3d(0, 0, 0)), 0.5, -1));
-    cam.addObject(&customModel);
-    light l1(Vector3d(0, 3, 6), Vector3d(1, 1, 1), 4);
+    model planeModel("checkeredplane", Pose3d(Vector3d(0, -0.5f, 0), Vector3d(0, 0, 0)), 100.0f);
+    //cam.addObject(new cube(Pose3d(Vector3d(0, 0, 8), Vector3d(0, 0, 0)), 1));
+    //cam.addObject(new cube(Pose3d(Vector3d(-4, 0, 8), Vector3d(0, 0, 0)), 1));
+    //cam.addObject(new cube(Pose3d(Vector3d(4, 0, 8), Vector3d(0, 0, 0)), 1));
+    //cam.addObject(new plane(Pose3d(Vector3d(0, -0.5, 0), Vector3d(0, 0, 0)), 100));
+    //cam.addObject(new plane(Pose3d(Vector3d(0, 0, 3), Vector3d(-90, 0, 0)), 1, 1));
+    //cam.addObject(new plane(Pose3d(Vector3d(0, 2, 6), Vector3d(0, 0, 0)), 0.5, -1));
+    //cam.addObject(&customModel);
+    cam.addObject(&planeModel);
+    cam.addObject(&cubeModel);
+    //cam.addObject(&cubeModel2);
+
+    light l1(Vector3d(20000, 50000, -30000), Vector3d(1, 1, 1), 70000);
     cam.addLight(&l1);
     cam.rootBVH.children.push_back(BVHNode());
     cam.rootBVH.children.push_back(BVHNode());
     cam.rootBVH.children.push_back(BVHNode());
-    cam.rootBVH.children.push_back(BVHNode());
-    cam.rootBVH.children.push_back(BVHNode());
+    //cam.rootBVH.children.push_back(BVHNode());
+    //cam.rootBVH.children.push_back(BVHNode());
+    //cam.rootBVH.children.push_back(BVHNode());
+    //cam.rootBVH.children.push_back(BVHNode());
     cam.rootBVH.children[0].objects.push_back(0);
-    cam.rootBVH.children[0].objects.push_back(1);
-    cam.rootBVH.children[0].objects.push_back(2);
-    cam.rootBVH.children[1].objects.push_back(4);
-    cam.rootBVH.children[2].objects.push_back(5);
-    cam.rootBVH.children[3].objects.push_back(3);
+    cam.rootBVH.children[1].objects.push_back(1);
+   // cam.rootBVH.children[2].objects.push_back(2);
+    //cam.rootBVH.children[0].objects.push_back(1);
+    //cam.rootBVH.children[0].objects.push_back(2);
+    //cam.rootBVH.children[1].objects.push_back(4);
+    //cam.rootBVH.children[2].objects.push_back(5);
+    //cam.rootBVH.children[3].objects.push_back(3);
     //cam.rootBVH.children[4].objects.push_back(6);
     stack.push(new renderNode(&cam));
     auto lastUpdate = std::chrono::duration_cast<std::chrono::milliseconds>(
@@ -100,6 +130,8 @@ int main(int argc, char* argv[]) {
     ).count();
     int frames = 0;
     const bool* kb = SDL_GetKeyboardState(0);
+
+
 
     while (running) {
         while (SDL_PollEvent(&event)) {
@@ -112,7 +144,7 @@ int main(int argc, char* argv[]) {
         SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
         SDL_RenderClear(renderer);
         SDL_SetRenderDrawColor(renderer, 255, 255, 255, 255);
-        stack.render(renderer);
+
 
         //SDL_RenderPresent(renderer);
 
@@ -131,18 +163,23 @@ int main(int argc, char* argv[]) {
         float forward =0;
         float up = 0;
         float yaw = cam.getPos()->rotation.y * (M_PI/180.0);
+        Vector3d rotationalVelocity;
         if (kb[SDL_SCANCODE_LEFT]) {
 
             cam.getPos()->setRotation(Vector3d(cam.getPos()->rotation.x, cam.getPos()->rotation.y - 10/fps, cam.getPos()->rotation.z));
+            rotationalVelocity.y -= 10;
         }
         if (kb[SDL_SCANCODE_RIGHT]) {
             cam.getPos()->setRotation(Vector3d(cam.getPos()->rotation.x, cam.getPos()->rotation.y + 10/fps, cam.getPos()->rotation.z));
+            rotationalVelocity.y += 10;
         }
         if (kb[SDL_SCANCODE_UP]) {
             cam.getPos()->setRotation(Vector3d(cam.getPos()->rotation.x + 10/fps, cam.getPos()->rotation.y, cam.getPos()->rotation.z));
+            rotationalVelocity.x += 10;
         }
         if (kb[SDL_SCANCODE_DOWN]) {
             cam.getPos()->setRotation(Vector3d(cam.getPos()->rotation.x - 10/fps, cam.getPos()->rotation.y, cam.getPos()->rotation.z));
+            rotationalVelocity.x -= 10;
         }
         if (kb[SDL_SCANCODE_W]) {
             forward += 1/fps;
@@ -171,7 +208,21 @@ int main(int argc, char* argv[]) {
         }else {
             cam.getPos()->setRotation(Vector3d(cam.getPos()->rotation.x, cam.getPos()->rotation.y, 0));
         }
+
+        Vector3d translationalVelocity(right, up, forward);
+        //std::cout << translationalVelocity.y << std::endl;
+        translationalVelocity = translationalVelocity*fps;
+        //cubeModel.pos.rotation.z += 10/fps;
+        //cubeModel.pos.rotation.x += 10/fps;
+        //cubeModel.pos.rotation.y += 10/fps;
+        int c = 0xFFFFFF;
         cam.getPos()->setTranslation(Vector3d(cam.getPos()->pose.x + right * std::cos(yaw) + forward * std::sin(yaw), cam.getPos()->pose.y + up, cam.getPos()->pose.z + forward * std::cos(yaw) - right * std::sin(yaw)));
+        if (controlserver) {
+            cam.getPos()->pose = pos.pose;
+            cam.getPos()->rotation = pos.rotation;
+        }
+
+        stack.render(renderer, translationalVelocity, rotationalVelocity);
         //l1.position = cam.getPos()->pose;
         //l1.position.z = cam.getPos()->pose.z + 1*std::sin(yaw);
         //l1.position.x = cam.getPos()->pose.x + 1*std::cos(yaw);
@@ -181,6 +232,7 @@ int main(int argc, char* argv[]) {
     }
     SDL_DestroyWindow(window);
     SDL_Quit();
+    cam.stop();
     texManager.freeTextures();
     return 0;
 }

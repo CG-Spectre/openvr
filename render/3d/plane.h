@@ -23,6 +23,7 @@ class plane : public renderableRT {
     plane(Pose3d pos, float edgeLength);
     plane(Pose3d pos, float edgeLength, int texture);
     std::vector<Face3d*> faces;
+    void render(SDL_Renderer * renderer, Vector3d vector3d, Vector3d rotational_velocity) override;
     private:
     int texture;
     Vertex3d firstVertex;

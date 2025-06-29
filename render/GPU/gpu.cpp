@@ -165,11 +165,67 @@ void gpu::initialize(TextureManager texManager) {
     std::vector<cl::Device> devices = context.getInfo<CL_CONTEXT_DEVICES>();
     gpu::device = devices[0];
     std::cout << "Using " << device.getInfo<CL_DEVICE_NAME>() << std::endl;
-    cl::Program program(context, sources);
+    cl::Program program;
+    int mode = 1;
+    if (mode == 0) {
+        std::ifstream binFile("openvrkernel.bin", std::ifstream::binary | std::ios::ate);
+        if (!binFile.is_open()) {
+            std::cerr << "Failed to open kernel binary file\n";
+            return;
+        }
+        std::streamsize size = binFile.tellg();
+        binFile.seekg(0, std::ios::beg);
+        std::vector<unsigned char> binary(size);
+        if (!binFile.read(reinterpret_cast<char*>(binary.data()), size)) {
+            std::cerr << "Failed to read kernel binary file\n";
+            return;
+        }
+        cl::Program::Binaries binaries = {binary};
+        std::vector<cl::Device> singleDevice = {device};
+        program = cl::Program(context, singleDevice, binaries);
+
+    }else if (mode == 1) {
+        program = cl::Program(context, sources);
+    }
+
     if (program.build(devices) != CL_SUCCESS) {
         std::cerr << "Error building: " << program.getBuildInfo<CL_PROGRAM_BUILD_LOG>(device) << "\n";
         return;
     }
+
+    std::vector<size_t> binarySizes = program.getInfo<CL_PROGRAM_BINARY_SIZES>();
+    std::vector<std::vector<unsigned char>> binaryData(binarySizes.size());
+
+    for (size_t i = 0; i < binarySizes.size(); ++i) {
+        binaryData[i].resize(binarySizes[i]);
+    }
+
+    std::vector<unsigned char*> binaryPointers(binarySizes.size());
+    for (size_t i = 0; i < binarySizes.size(); ++i) {
+        binaryPointers[i] = binaryData[i].data();
+    }
+
+    cl_program rawProgram = program();
+
+    cl_int err2 = clGetProgramInfo(
+        rawProgram,
+        CL_PROGRAM_BINARIES,
+        binaryPointers.size() * sizeof(unsigned char*),
+        binaryPointers.data(),
+        nullptr
+    );
+
+    if (err2 != CL_SUCCESS) {
+        std::cerr << "clGetProgramInfo failed: " << err2 << "\n";
+        return;
+    }
+
+    std::ofstream binFile("openvrkernel.bin", std::ios::binary);
+    binFile.write(reinterpret_cast<char*>(binaryData[0].data()), binarySizes[0]);
+    binFile.close();
+
+    std::cout << "Compiled kernel binary." << std::endl;
+
     std::string extensions = device.getInfo<CL_DEVICE_EXTENSIONS>();
     if (extensions.find("cl_khr_gl_sharing") == std::string::npos) {
         std::cerr << "Interop not supported on this device!" << std::endl;

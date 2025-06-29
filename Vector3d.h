@@ -24,6 +24,7 @@ class Vector3d {
 
     Vector3d operator-(const Vector3d &other);
 
+
     float x;
     float y;
     float z;

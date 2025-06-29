@@ -37,4 +37,15 @@ void renderStack::render(SDL_Renderer *renderer) {
     }
 }
 
+void renderStack::render(SDL_Renderer *renderer, Vector3d vector3d, Vector3d rotational_velocity) {
+    if (this->first == nullptr) {
+        std::cout << "Empty renderstack!" << std::endl;
+        return;
+    }
+    renderNode *currentNode = this->first;
+    while (currentNode != nullptr) {
+        currentNode->getInfo()->render(renderer, vector3d, rotational_velocity);
+        currentNode = currentNode->getNext();
+    }
+}
 

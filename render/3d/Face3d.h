@@ -18,6 +18,14 @@ class Face3d {
     void setTextureId(int id);
     int textureRotation = 0;
     void setTextureRotation(int rot);
+    int specularMap = -1;
+    int reflectionMap = -1;
+    int normalMap = -1;
+    int displacementMap = -1;
+    void setSpecularMap(int id);
+    void setReflectionMap(int id);
+    void setNormalMap(int id);
+    void setDisplacementMap(int id);
 
 private:
     std::vector<Vertex3d*> vertices;

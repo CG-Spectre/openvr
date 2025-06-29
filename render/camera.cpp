@@ -5,6 +5,7 @@
 #include "camera.h"
 
 #include <cmath>
+#include <fstream>
 #include <iostream>
 #include <thread>
 #include <CL/cl.hpp>
@@ -19,6 +20,12 @@
 #include "3d/Vertex3d.h"
 #include "GPU/gpu.h"
 #include <glm.hpp>
+#include <sys/stat.h>
+
+#include "json.hpp"
+#include "pipe_server.h"
+#include "GPU/policy_weights.h"
+using json = nlohmann::json;
 
 camera::camera() {
     this->stack = renderStack();
@@ -40,6 +47,8 @@ void camera::addLight(light *object) {
     this->lights.push_back(object);
 }
 
+
+
 Pose3d* camera::getPos() {
     return &this->pos;
 }
@@ -54,12 +63,43 @@ cl::Buffer bvhSerializedBuffer;
 cl::Buffer bvhIndicesBuffer;
 cl::Buffer lightsSerializedBuffer;
 cl::Buffer textureIndicesBuffer;
-void camera::render(SDL_Renderer *renderer) {
+cl::Buffer shadows;
+cl::Buffer irlighting;
+cl::Buffer renderILResultBuffer;
+cl::Buffer W0_buffer;
+cl::Buffer W1_buffer;
+cl::Buffer W2_buffer;
+cl::Buffer b0_buffer;
+cl::Buffer b1_buffer;
+cl::Buffer b2_buffer;
 
+
+void camera::init() {
+    int width = *SDLConfig::WINDOW_WIDTH;
+    int height = *SDLConfig::WINDOW_HEIGHT;
+    shadows = cl::Buffer(gpu::context, CL_MEM_READ_WRITE, width * height * sizeof(float) * 3);
+    irlighting = cl::Buffer(gpu::context, CL_MEM_READ_WRITE, width * height * sizeof(float) * 6);
+    gpu::renderPixel.setArg(34, shadows);
+    gpu::renderPixel.setArg(52, irlighting);
+    W0_buffer = cl::Buffer(gpu::context, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, sizeof(W0), (void*)W0);
+    W1_buffer = cl::Buffer(gpu::context, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, sizeof(W1), (void*)W1);
+    W2_buffer = cl::Buffer(gpu::context, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, sizeof(W2), (void*)W2);
+    b0_buffer = cl::Buffer(gpu::context, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, sizeof(b0), (void*)b0);
+    b1_buffer = cl::Buffer(gpu::context, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, sizeof(b1), (void*)b1);
+    b2_buffer = cl::Buffer(gpu::context, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, sizeof(b2), (void*)b2);
+}
+
+void camera::setReflectDir(Vector3d *direction) {
+    this->reflectDir = direction;
+    this->useReflectDir = true;
+}
+
+void camera::render(SDL_Renderer * renderer, Vector3d translationalVelocity, Vector3d rotational_velocity) {
     int width = *SDLConfig::WINDOW_WIDTH;
     int height = *SDLConfig::WINDOW_HEIGHT;
 
-    time = !time;
+    std::vector<indirectLightingResult> indirectLightingResults;
+
     Vector3d rayPoint = this->pos.pose;
     float yaw = this->pos.rotation.y;
     float pitch = this->pos.rotation.x;
@@ -71,6 +111,7 @@ void camera::render(SDL_Renderer *renderer) {
         this->prevHeight = *SDLConfig::WINDOW_HEIGHT;
         std::cout << "resize" << std::endl;
         gpu::resize();
+        init();
     }
 
     //cl::CommandQueue queue(gpu::context, gpu::device);
@@ -132,7 +173,11 @@ void camera::render(SDL_Renderer *renderer) {
     bvhIndicesBuffer = cl::Buffer(gpu::context, CL_MEM_READ_WRITE | CL_MEM_COPY_HOST_PTR, rootSer.indices.size() * sizeof(float), rootSer.indices.data());
     lightsSerializedBuffer = cl::Buffer(gpu::context, CL_MEM_READ_WRITE | CL_MEM_COPY_HOST_PTR, lightsSerialized.size() * sizeof(float), lightsSerialized.data());
     textureIndicesBuffer = cl::Buffer(gpu::context, CL_MEM_READ_WRITE | CL_MEM_COPY_HOST_PTR, textureIndices.size() * sizeof(int), textureIndices.data());
+    std::vector<float> zero(1, 0.0f);
+    renderILResultBuffer = cl::Buffer(gpu::context, CL_MEM_READ_WRITE | CL_MEM_COPY_HOST_PTR, 30 * sizeof(float), zero.data());
     //}
+    //std::vector<float> zeros(width * height, 0.0f);
+    //gpu::queue.enqueueWriteBuffer(shadows, CL_TRUE, 0, zeros.size() * sizeof(float), zeros.data());
 
     gpu::renderPixel.setArg(2, outputBuffer);
     gpu::renderPixel.setArg(3, indicesSquaredBuffer);
@@ -164,13 +209,39 @@ void camera::render(SDL_Renderer *renderer) {
     gpu::renderPixel.setArg(29, static_cast<int>(rootSer.data.size()));
     gpu::renderPixel.setArg(30, static_cast<int>(rootSer.indices.size()));
     gpu::renderPixel.setArg(31, lightsSerializedBuffer);
-    gpu::renderPixel.setArg(32, static_cast<int>(lightsSerialized.size()));
+    gpu::renderPixel.setArg(32, static_cast<int>(lightsSerialized.size()/7));
     gpu::renderPixel.setArg(33, textureIndicesBuffer);
+    gpu::renderPixel.setArg(35, translationalVelocity.x);
+    gpu::renderPixel.setArg(36, translationalVelocity.y);
+    gpu::renderPixel.setArg(37, translationalVelocity.z);
+    gpu::renderPixel.setArg(38, rotational_velocity.x);
+    gpu::renderPixel.setArg(39, rotational_velocity.y);
+    gpu::renderPixel.setArg(40, rotational_velocity.z);
+    gpu::renderPixel.setArg(41, renderILResultBuffer);
+    gpu::renderPixel.setArg(42, static_cast<int>(useReflectDir));
+    float refX = useReflectDir ? this->reflectDir->x : 0.0f;
+    float refY = useReflectDir ? this->reflectDir->y : 0.0f;
+    float refZ = useReflectDir ? this->reflectDir->z : 1.0f;
+    gpu::renderPixel.setArg(43, refX);
+    gpu::renderPixel.setArg(44, refY);
+    gpu::renderPixel.setArg(45, refZ);
+    gpu::renderPixel.setArg(46, W0_buffer);
+    gpu::renderPixel.setArg(47, W1_buffer);
+    gpu::renderPixel.setArg(48, W2_buffer);
+    gpu::renderPixel.setArg(49, b0_buffer);
+    gpu::renderPixel.setArg(50, b1_buffer);
+    gpu::renderPixel.setArg(51, b2_buffer);
+
     //gpu::renderPixel.setArg(24, static_cast<int>(text.size()));
 
     gpu::clearScreen.setArg(0, width);
     gpu::clearScreen.setArg(1, height);
     gpu::clearScreen.setArg(3, static_cast<int>(time));
+
+
+    gpu::queue.enqueueWriteBuffer(shadows, CL_TRUE, 0, 0, zero.data());
+    gpu::queue.enqueueWriteBuffer(irlighting, CL_TRUE, 0, 0, zero.data());
+
     clSetKernelArg(gpu::clearScreen.get(), 2, sizeof(cl_mem), &gpu::image);
     glBindBuffer(GL_PIXEL_UNPACK_BUFFER, gpu::pbo);
     /*void* ptr = glMapBuffer(GL_PIXEL_UNPACK_BUFFER, GL_WRITE_ONLY);
@@ -183,9 +254,37 @@ void camera::render(SDL_Renderer *renderer) {
     //gpu::queue.finish();
     //std::cout << "start" << std::endl;
     gpu::queue.enqueueNDRangeKernel(gpu::renderPixel, cl::NullRange, cl::NDRange(width, height));
-    //gpu::queue.finish();
+    //gpu::queue.finish();d
    // std::cout << "end" << std::endl;
     clEnqueueReleaseGLObjects(gpu::queue.get(), 1, &gpu::image, 0, nullptr, nullptr);
+    gpu::queue.finish();
+
+    std::vector<float> results(30);
+    std::vector<indirectLightingResult> ilresults;
+    gpu::queue.enqueueReadBuffer(renderILResultBuffer, CL_TRUE, 0, 30 * sizeof(float), results.data());
+    for (int i = 0; i < 2; i++) {
+        ilresults.push_back({
+            results[i*15 + 0],
+            results[i*15 + 1],
+            results[i*15 + 2],
+            results[i*15 + 3],
+            results[i*15 + 4],
+            results[i*15 + 5],
+            results[i*15 + 6],
+            results[i*15 + 7],
+            results[i*15 + 8],
+            results[i*15 + 9],
+            results[i*15 + 10],
+            results[i*15 + 11],
+            results[i*15 + 12],
+            results[i*15 + 13],
+            results[i*15 + 14]
+        });
+    }
+    pipe_server::setData(ilresults[0]);
+    //allILResults.insert(allILResults.end(), ilresults.begin(), ilresults.end());
+    //indirectLightingResults.push_back({});
+    //indirectLightingResults.push_back({});
 
     glBindTexture(GL_TEXTURE_2D, gpu::texture);
     glBindBuffer(GL_PIXEL_UNPACK_BUFFER, gpu::pbo);
@@ -198,7 +297,46 @@ void camera::render(SDL_Renderer *renderer) {
     glBindTexture(GL_TEXTURE_2D, gpu::texture);
     glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
     SDL_GL_SwapWindow(gpu::getWindow());
-    //std::cout << "end2" << std::endl;
+    time++;
+}
+
+void camera::stop() {
+    return;
+    std::cout << "Saving " << allILResults.size() << " results." << std::endl;
+    std::ofstream outFile("samples.json");
+    json output;
+    if (!outFile.is_open()) {
+        std::cerr << "Could not open file for writing\n";
+        return;
+    }
+    for (int i = 0; i < allILResults.size(); i++) {
+        indirectLightingResult res = allILResults[i];
+        json out = json{
+                {"radiance", res.radiance},
+                {"interX", res.interX},
+                {"interY", res.interY},
+                {"interZ", res.interZ},
+                {"sampleX", res.sampleX},
+                {"sampleY", res.sampleY},
+                {"sampleZ", res.sampleZ},
+                {"albedo", res.albedo},
+                {"shininess", res.shininess},
+                {"normalX", res.normalX},
+                {"normalY", res.normalY},
+                {"normalZ", res.normalZ},
+                {"normalZ", res.reflectX},
+                {"normalZ", res.reflectY},
+                {"normalZ", res.reflectZ},
+        };
+        output.push_back(out);
+    }
+    outFile << output.dump(4);
+    outFile.close();
+}
+
+
+void camera::render(SDL_Renderer *renderer) {
+    render(renderer, Vector3d(0, 0, 0), Vector3d(0, 0, 0));
 }
 
 

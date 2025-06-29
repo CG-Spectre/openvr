@@ -16,7 +16,7 @@ class cube : public renderableRT {
     public:
     void render(SDL_Renderer *renderer) override;
     SerializedObject getSerializedFaces(float tx, float ty, float tz) override;
-
+    void render(SDL_Renderer * renderer, Vector3d vector3d, Vector3d rotational_velocity) override;
     Face3d f1;
     Face3d f2;
     Face3d f3;

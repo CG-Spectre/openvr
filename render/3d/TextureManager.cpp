@@ -37,7 +37,8 @@ void TextureManager::initialize() {
         outChannels = std::max(outChannels, channels1);
         stbi_image_free(image);
     }
-    //std::cout << "Image width: " << outChannels << std::endl;
+
+    //std::cout << "Image width: " << outWidth << std::endl;
     this->image = new unsigned char[outWidth * outHeight * outChannels];
     int count = 0;
     int currentWidth = 0;
@@ -70,7 +71,7 @@ void TextureManager::initialize() {
     if (width == 0) {
         success = false;
     }
-    std::cout << "Successfully initialized " << count << " textures.";
+    std::cout << "Successfully initialized " << count << " textures." << std::endl;
     stbi_write_png((dir+"/map/"+"textures.png").c_str(), outWidth, outHeight, outChannels, this->image, outWidth * outChannels);
     /*int width1, width2, height1, height2, channels1, channels2;
     unsigned char* image1 = stbi_load((dir+"/grass.jpeg").c_str(), &width1, &height1, &channels1, 3);

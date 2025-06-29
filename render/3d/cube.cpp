@@ -59,19 +59,21 @@ cube::cube(Pose3d pos, float edgeLength) {
     f1.addVertex(&v2);
     f1.addVertex(&v4);
     f1.addVertex(&v3);
-    f1.setTextureId(1);
+    f1.setTextureRotation(0);
+    f1.setTextureId(8);
 
     f2.addVertex(&v5);
     f2.addVertex(&v6);
     f2.addVertex(&v8);
     f2.addVertex(&v7);
-    f2.setTextureId(1);
+    f2.setTextureId(0);
 
     f3.addVertex(&v1);
     f3.addVertex(&v2);
     f3.addVertex(&v6);
     f3.addVertex(&v5);
-    f3.setTextureId(1);
+    f3.setTextureId(5);
+    f3.setNormalMap(6);
 
     /*f4.addVertex(&v1);
     f4.addVertex(&v3);
@@ -81,21 +83,24 @@ cube::cube(Pose3d pos, float edgeLength) {
     f4.addVertex(&v5);
     f4.addVertex(&v1);
     f4.addVertex(&v3);
-    f4.setTextureId(1);
-    f4.setTextureRotation(0);
+    f4.setTextureId(5);
+    f4.setTextureRotation(270);
+    f4.setNormalMap(6);
 
     f5.addVertex(&v3);
     f5.addVertex(&v4);
     f5.addVertex(&v8);
     f5.addVertex(&v7);
-    f5.setTextureId(1);
+    f5.setTextureId(5);
+    f5.setNormalMap(6);
 
     f6.addVertex(&v2);
     f6.addVertex(&v4);
     f6.addVertex(&v8);
     f6.addVertex(&v6);
-    f6.setTextureId(1);
-    f6.setTextureRotation(0);
+    f6.setTextureId(5);
+    f6.setTextureRotation(270);
+    f6.setNormalMap(6);
 
     faces.push_back(&f1);
     faces.push_back(&f2);
@@ -107,7 +112,9 @@ cube::cube(Pose3d pos, float edgeLength) {
     firstVertex = v1;
     //firstVertex.getConnections(). [0].addConnection(new Vector3d(-halfedge, halfedge, -halfedge));
 }
+void cube::render(SDL_Renderer * renderer, Vector3d vector3d, Vector3d rotational_velocity) {
 
+}
 void cube::render(SDL_Renderer *renderer) {
     SDL_SetRenderDrawColor(renderer, 255, 0, 0, 255);  // Black
     //std::cout << faces[0]->getVertices()->size() << std::endl;
@@ -163,6 +170,10 @@ SerializedObject cube::getSerializedFaces(float tx, float ty, float tz) {
         //std::cout << faces[faceIndex]->getVertices()->size() << std::endl;
         texturesSerialized.push_back(faces[faceIndex]->textureId);
         texturesSerialized.push_back(faces[faceIndex]->textureRotation);
+        texturesSerialized.push_back(faces[faceIndex]->normalMap);
+        texturesSerialized.push_back(faces[faceIndex]->specularMap);
+        texturesSerialized.push_back(faces[faceIndex]->reflectionMap);
+        texturesSerialized.push_back(faces[faceIndex]->displacementMap);
         for (int k = 0; k < faces[faceIndex]->getVertices()->size(); k++) {
             Vector3d posNS = *faces[faceIndex]->getVertices()->at(k)->getPose() + this->pos.pose;
             facesTrulySerialized.push_back(posNS.x);
