@@ -18,13 +18,16 @@
 
 int width, height;
 int main(int argc, char* argv[]) {
-    bool controlserver = false;
-    bool useReflectDir = false;
+    bool controlserver = true;
+    bool useReflectDir = true;
     Vector3d reflectDir = Vector3d(0, 0, 0);
+    Vector3d reflectDir1 = Vector3d(0, 0, 0);
+    Vector3d reflectDir2 = Vector3d(0, 0, 0);
+    Vector3d reflectDir3 = Vector3d(0, 0, 0);
     Pose3d pos(0, 0, 0, 0, 0.1, 0);
     if (controlserver) {
-        std::thread pipeserver([&pos, &reflectDir]() {
-            pipe_server::start(&pos, &reflectDir);
+        std::thread pipeserver([&pos, &reflectDir, &reflectDir1, &reflectDir2, &reflectDir3]() {
+            pipe_server::start(&pos, &reflectDir, &reflectDir1, &reflectDir2, &reflectDir3);
         });
         pipeserver.detach();
     }
@@ -87,7 +90,7 @@ int main(int argc, char* argv[]) {
     renderStack stack;
     camera cam(Pose3d(0, 0, 0, 0, 0.1, 0));
     if (useReflectDir) {
-        cam.setReflectDir(&reflectDir);
+        cam.setReflectDir(&reflectDir, &reflectDir1, &reflectDir2, &reflectDir3);
     }
     cam.init();
     model cubeModel("cube", Pose3d(Vector3d(0, 0, 4), Vector3d(0, 180, 0)), 1);
@@ -216,6 +219,7 @@ int main(int argc, char* argv[]) {
         //cubeModel.pos.rotation.x += 10/fps;
         //cubeModel.pos.rotation.y += 10/fps;
         int c = 0xFFFFFF;
+
         cam.getPos()->setTranslation(Vector3d(cam.getPos()->pose.x + right * std::cos(yaw) + forward * std::sin(yaw), cam.getPos()->pose.y + up, cam.getPos()->pose.z + forward * std::cos(yaw) - right * std::sin(yaw)));
         if (controlserver) {
             cam.getPos()->pose = pos.pose;
@@ -223,6 +227,7 @@ int main(int argc, char* argv[]) {
         }
 
         stack.render(renderer, translationalVelocity, rotationalVelocity);
+
         //l1.position = cam.getPos()->pose;
         //l1.position.z = cam.getPos()->pose.z + 1*std::sin(yaw);
         //l1.position.x = cam.getPos()->pose.x + 1*std::cos(yaw);

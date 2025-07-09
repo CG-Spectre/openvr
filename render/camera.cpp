@@ -72,6 +72,7 @@ cl::Buffer W2_buffer;
 cl::Buffer b0_buffer;
 cl::Buffer b1_buffer;
 cl::Buffer b2_buffer;
+cl::Buffer raysInBuffer;
 
 
 void camera::init() {
@@ -89,8 +90,11 @@ void camera::init() {
     b2_buffer = cl::Buffer(gpu::context, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, sizeof(b2), (void*)b2);
 }
 
-void camera::setReflectDir(Vector3d *direction) {
+void camera::setReflectDir(Vector3d *direction, Vector3d *direction1, Vector3d *direction2, Vector3d *direction3) {
     this->reflectDir = direction;
+    this->reflectDir1 = direction1;
+    this->reflectDir2 = direction2;
+    this->reflectDir3 = direction2;
     this->useReflectDir = true;
 }
 
@@ -163,6 +167,7 @@ void camera::render(SDL_Renderer * renderer, Vector3d translationalVelocity, Vec
    // if (firstTime) {
         //firstTime = false;
         //std::cout << allObjectsSerialized[0] << std::endl;
+    //std::cout << "here" << std::endl;
     outputBuffer = cl::Buffer(gpu::context, CL_MEM_WRITE_ONLY, width * height*3 * sizeof(float));
     indicesSquaredBuffer= cl::Buffer(gpu::context, CL_MEM_READ_WRITE | CL_MEM_COPY_HOST_PTR, indicesSquared.size() * sizeof(int), indicesSquared.data());
     indicesOfIndicesBuffer = cl::Buffer(gpu::context, CL_MEM_READ_WRITE | CL_MEM_COPY_HOST_PTR, indicesOfIndices.size() * sizeof(int), indicesOfIndices.data());
@@ -175,6 +180,17 @@ void camera::render(SDL_Renderer * renderer, Vector3d translationalVelocity, Vec
     textureIndicesBuffer = cl::Buffer(gpu::context, CL_MEM_READ_WRITE | CL_MEM_COPY_HOST_PTR, textureIndices.size() * sizeof(int), textureIndices.data());
     std::vector<float> zero(1, 0.0f);
     renderILResultBuffer = cl::Buffer(gpu::context, CL_MEM_READ_WRITE | CL_MEM_COPY_HOST_PTR, 30 * sizeof(float), zero.data());
+    //std::cout << "here" << std::endl;
+    if (useReflectDir) {
+        //assert(reflectDir->x && reflectDir->y && reflectDir->z && reflectDir1->x&& reflectDir1->y&& reflectDir1->z&&reflectDir2->x&& reflectDir2->y&& reflectDir2->z&&reflectDir3->x&& reflectDir3->y&& reflectDir3->z);
+        //std::vector<float> rays = {reflectDir->x, reflectDir->y, reflectDir->z, reflectDir1->x, reflectDir1->y, reflectDir1->z,reflectDir2->x, reflectDir2->y, reflectDir2->z,reflectDir3->x, reflectDir3->y, reflectDir3->z};
+        raysInBuffer = cl::Buffer(gpu::context, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, 12*sizeof(float), zero.data());
+    }else {
+        raysInBuffer = cl::Buffer(gpu::context, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, 12 * sizeof(float), zero.data());
+    }
+    //std::cout << "here1" << std::endl;
+    //std::cout << rays[0] << std::endl;
+
     //}
     //std::vector<float> zeros(width * height, 0.0f);
     //gpu::queue.enqueueWriteBuffer(shadows, CL_TRUE, 0, zeros.size() * sizeof(float), zeros.data());
@@ -231,6 +247,9 @@ void camera::render(SDL_Renderer * renderer, Vector3d translationalVelocity, Vec
     gpu::renderPixel.setArg(49, b0_buffer);
     gpu::renderPixel.setArg(50, b1_buffer);
     gpu::renderPixel.setArg(51, b2_buffer);
+    gpu::renderPixel.setArg(53, raysInBuffer);
+    gpu::renderPixel.setArg(54, 4);
+
 
     //gpu::renderPixel.setArg(24, static_cast<int>(text.size()));
 
@@ -238,7 +257,7 @@ void camera::render(SDL_Renderer * renderer, Vector3d translationalVelocity, Vec
     gpu::clearScreen.setArg(1, height);
     gpu::clearScreen.setArg(3, static_cast<int>(time));
 
-
+    //std::cout << "here2" << std::endl;
     gpu::queue.enqueueWriteBuffer(shadows, CL_TRUE, 0, 0, zero.data());
     gpu::queue.enqueueWriteBuffer(irlighting, CL_TRUE, 0, 0, zero.data());
 
@@ -298,6 +317,7 @@ void camera::render(SDL_Renderer * renderer, Vector3d translationalVelocity, Vec
     glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
     SDL_GL_SwapWindow(gpu::getWindow());
     time++;
+    //std::cout << "here3" << std::endl;
 }
 
 void camera::stop() {

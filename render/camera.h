@@ -24,7 +24,7 @@ public:
     void stop();
     void init();
     void render(SDL_Renderer * renderer, Vector3d vector3d, Vector3d rotational_velocity) override;
-    void setReflectDir(Vector3d* direction);
+    void setReflectDir(Vector3d* direction, Vector3d* direction1, Vector3d* direction2, Vector3d* direction3);
     struct indirectLightingResult{
         float radiance;
         float interX;
@@ -52,6 +52,9 @@ private:
     std::vector<light *> lights;
     bool useReflectDir = false;
     Vector3d *reflectDir;
+    Vector3d *reflectDir1;
+    Vector3d *reflectDir2;
+    Vector3d *reflectDir3;
     std::vector<indirectLightingResult> allILResults;
 };
 

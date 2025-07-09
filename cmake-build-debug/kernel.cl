@@ -1264,7 +1264,9 @@ __kernel void renderPixel(
     __global float* b0,
     __global float* b1,
     __global float* b2,
-    __global float* irLighting
+    __global float* irLighting,
+    __global float* raysIn,
+    const int raysInAmt
 ){
 
 
@@ -1382,37 +1384,38 @@ __kernel void renderPixel(
     float albedo = 0.3f;
     const int rays = 64;
     float3 sampleDirsWorld[rays];
-
+    float3 totalIndirectColor2 = (float3)(0, 0, 0);
     float3 sampleDirWorld;
     float3 sampleDirWorld2;
     float3 hemisphere = n;
     if(dot(hemisphere, R) < 0){
         hemisphere = -hemisphere;
     }
+    float3 raysInArr[4];
     if(useReflectDir){
-        sampleDirWorld = staticFromHemisphere(hemisphere, reflectX, reflectY, reflectZ);
-        sampleDirWorld2 = sampleDirWorld;
-    }else{
-        for(int r = 0; r < rays; r++){
-             sampleDirsWorld[r] = randomFromHemisphere(R, shininess, time/(r+1));
+        //sampleDirWorld = staticFromHemisphere(hemisphere, reflectX, reflectY, reflectZ);
+        //sampleDirWorld2 = sampleDirWorld;
+
+        float4 indirectColorRIn = (float4)(0, 0, 0, 0);
+        float indirectDistRIn = 1000000000;
+        for(int r = 0; r < raysInAmt; r++){
+             float3 prevec = (float3)(raysIn[r*3 + 0], raysIn[r*3 + 1], raysIn[r*3 + 2]);
+             float3 vec;
+             if(length(prevec) > 0){
+                vec = normalize(prevec);
+             }else{
+                vec = (float3)(0, 0, 1);
+             }
+             raysInArr[r] = staticFromHemisphere(hemisphere, vec.x, vec.y, vec.z);
         }
-        //sampleDirWorld = randomFromHemisphere(R, shininess, time);
-        //sampleDirWorld2 = randomFromHemisphere(R, shininess, time/10);
-       // float input1[12] = {albedo, inter.x + pos.x, inter.y + pos.y, inter.z + pos.z, n.x, n.y, n.z, 0, shininess, direction.x, direction.y, direction.z};
-        //float output1[3];
-        //predict_direction(input1, W0, W1, W2, b0, b1, b2, output1, x == width/2 && y == height/2);
-        //float3 outvec = normalize((float3)(output1[0], output1[1], output1[2]));
-        //outvec = normalize(/*(float3)(-0.5, 0, 0.1)*/outvec);
-        //sampleDirWorld = staticFromHemisphere(hemisphere, outvec.x, outvec.y, outvec.z);
-       // float tmp = sampleDirWorld.y;
-        //sampleDirWorld.y = fabs(sampleDirWorld.y);
-
+        totalIndirectColor2 = calcIL(indicesSquared, indicesOfIndices, allObjectsSerialized, allIndicesSerialized, isSize, iiSize, aosSize, aisSize, bvhSerialized, bvhIndices, bvhSize, bvhIndicesSize, pos, inter, direction, &indirectInter, &indirectColorRIn, &indirectDistRIn, x, y, width, height, sampler, textures, widthsSerialized, heightsSerialized, uvSerialized, texturesSerialized, textureIndices, &indirectIndex, &indirectFace, &indirectNormal, face, lightsSize, lightsSerialized, kd, (float4)(ambient.x, ambient.y, ambient.z, 1), albedo, hemisphere, &raysInArr, raysInAmt, shininess);
     }
-
+    for(int r = 0; r < rays; r++){
+         sampleDirsWorld[r] = randomFromHemisphere(R, shininess, time/(r+1));
+    }
     float4 indirectColorR = (float4)(0, 0, 0, 0);
     float indirectDistR = 1000000000;
     float3 totalIndirectColor = calcIL(indicesSquared, indicesOfIndices, allObjectsSerialized, allIndicesSerialized, isSize, iiSize, aosSize, aisSize, bvhSerialized, bvhIndices, bvhSize, bvhIndicesSize, pos, inter, direction, &indirectInter, &indirectColorR, &indirectDistR, x, y, width, height, sampler, textures, widthsSerialized, heightsSerialized, uvSerialized, texturesSerialized, textureIndices, &indirectIndex, &indirectFace, &indirectNormal, face, lightsSize, lightsSerialized, kd, (float4)(ambient.x, ambient.y, ambient.z, 1), albedo, hemisphere, &sampleDirsWorld, rays, shininess);
-
     if(time > 1){
         int blurOffsetIR = 2;
         int modifiedBlurOffsetIR = min((((float)blurOffsetIR)/(dist/10)), 7.0f);
@@ -1503,9 +1506,10 @@ __kernel void renderPixel(
 
 
     if(x == width/2 && y == height/2){
+        printf("%f\n", length(totalIndirectColor2));
         //if(length(indirectColor3) > 0.5)
             //printf("%f %f %f | %f %f %f | %f %f %f | %f %f %f | %f\n", sampleDirWorld.x, sampleDirWorld.y, sampleDirWorld.z, hemisphere.x, hemisphere.y, hemisphere.z, inter.x + pos.x, inter.y + pos.y, inter.z + pos.z, n.x, n.y, n.z, length(indirectColor3));
-        irResults[0] = length(indirectColor1);
+        irResults[0] = fabs(length(totalIndirectColor) - length(totalIndirectColor2));
         irResults[1] = inter.x + pos.x;
         irResults[2] = inter.y + pos.y;
         irResults[3] = inter.z + pos.z;
@@ -1711,6 +1715,9 @@ __kernel void renderPixel(
 
     //}
     float3 lighting = ambient + overallDiffuse;
+    if(useReflectDir){
+        totalIndirectColor = totalIndirectColor2;
+    }
     color.x *= lighting.x + totalIndirectColor.x;
     color.y *= lighting.y + totalIndirectColor.y;
     color.z *= lighting.z + totalIndirectColor.z;

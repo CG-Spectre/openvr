@@ -36,8 +36,8 @@ yaw = 0
 pitch = 0
 roll = 0
 
-def getRadiance(actionX, actionY, actionZ):
-    win32file.WriteFile(handle, f"1 {actionX} {actionY} {actionZ}".encode("utf-8"))
+def getRadiance(actionX, actionY, actionZ, actionX1, actionY1, actionZ1, actionX2, actionY2, actionZ2, actionX3, actionY3, actionZ3):
+    win32file.WriteFile(handle, f"1 {actionX} {actionY} {actionZ} {actionX1} {actionY1} {actionZ1} {actionX2} {actionY2} {actionZ2} {actionX3} {actionY3} {actionZ3}".encode("utf-8"))
     win32file.FlushFileBuffers(handle)
     _, data = win32file.ReadFile(handle, 512)
     res = json.loads(data.decode())

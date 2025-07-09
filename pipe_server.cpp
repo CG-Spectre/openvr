@@ -27,7 +27,7 @@ void pipe_server::setData(camera::indirectLightingResult datad) {
 
 }
 
-void pipe_server::start(Pose3d* pos, Vector3d* refDir) {
+void pipe_server::start(Pose3d* pos, Vector3d* refDir, Vector3d* refDir1, Vector3d* refDir2, Vector3d* refDir3) {
     const char* pipeName = R"(\\.\pipe\MyPipe)";
 
     HANDLE hPipe = CreateNamedPipeA(
@@ -120,9 +120,36 @@ void pipe_server::start(Pose3d* pos, Vector3d* refDir) {
             str.erase(0, str.find(" ") + 1);
             float z = std::stof(str.substr(0, str.find(" ")));
             str.erase(0, str.find(" ") + 1);
+            float x1 = std::stof(str.substr(0, str.find(" ")));
+            str.erase(0, str.find(" ") + 1);
+            float y1 = std::stof(str.substr(0, str.find(" ")));
+            str.erase(0, str.find(" ") + 1);
+            float z1 = std::stof(str.substr(0, str.find(" ")));
+            str.erase(0, str.find(" ") + 1);
+            float x2 = std::stof(str.substr(0, str.find(" ")));
+            str.erase(0, str.find(" ") + 1);
+            float y2 = std::stof(str.substr(0, str.find(" ")));
+            str.erase(0, str.find(" ") + 1);
+            float z2 = std::stof(str.substr(0, str.find(" ")));
+            str.erase(0, str.find(" ") + 1);
+            float x3 = std::stof(str.substr(0, str.find(" ")));
+            str.erase(0, str.find(" ") + 1);
+            float y3 = std::stof(str.substr(0, str.find(" ")));
+            str.erase(0, str.find(" ") + 1);
+            float z3 = std::stof(str.substr(0, str.find(" ")));
+            str.erase(0, str.find(" ") + 1);
             refDir->x = x;
             refDir->y = y;
             refDir->z = z;
+            refDir1->x = x1;
+            refDir1->y = y1;
+            refDir1->z = z1;
+            refDir2->x = x2;
+            refDir2->y = y2;
+            refDir2->z = z2;
+            refDir3->x = x3;
+            refDir3->y = y3;
+            refDir3->z = z3;
             awaitingData = 1;
             while (awaitingData) {
                 //std::cout << awaitingData << std::endl;
