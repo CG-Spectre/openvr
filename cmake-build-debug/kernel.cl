@@ -1016,76 +1016,71 @@ inline void indirectRay(
                 }
                 p = np;
               }
-              if (false)
-                // printf("%d\n", inside);
-                if (inside) {
-                  //*intersected = true;
+              // printf("%d\n", inside);
+              if (inside) {
+                //*intersected = true;
 
-                  float4 colort;
-                  int textureId = texturesSerialized[(k2) * 6];
-                  int normalMapId = texturesSerialized[(k2) * 6 + 2];
-                  // normalMapId = 6;
-                  int dispMapId = texturesSerialized[(k2) * 6 + 5];
-                  int textureRot = texturesSerialized[(k2) * 6 + 1];
-                  float localX = intersection.x - minX;
-                  float localY = intersection.z - minY;
-                  float width = maxX - minX;
-                  float height = maxY - minY;
-                  int textureWidth = 0;
-                  int textureHeight = 0;
-                  int coordX = 0;
-                  int coordY = 0;
-                  if (textureId == -1) {
-                    colort = (float4)(1, 0, 1, 1);
-                  } else if (textureId == -2) {
-                    colort = (float4)(0, 0, 0, 0);
-                  } else if (textureId > 99999) {
-                    colort = hexToColor(textureId - 100000);
+                float4 colort;
+                int textureId = texturesSerialized[(k2) * 6];
+                int normalMapId = texturesSerialized[(k2) * 6 + 2];
+                // normalMapId = 6;
+                int dispMapId = texturesSerialized[(k2) * 6 + 5];
+                int textureRot = texturesSerialized[(k2) * 6 + 1];
+                float localX = intersection.x - minX;
+                float localY = intersection.z - minY;
+                float width = maxX - minX;
+                float height = maxY - minY;
+                int textureWidth = 0;
+                int textureHeight = 0;
+                int coordX = 0;
+                int coordY = 0;
+                if (textureId == -1) {
+                  colort = (float4)(1, 0, 1, 1);
+                } else if (textureId == -2) {
+                  colort = (float4)(0, 0, 0, 0);
+                } else if (textureId > 99999) {
+                  colort = hexToColor(textureId - 100000);
 
-                  } else {
-                    coordX =
-                        ((float)localX / width) * widthsSerialized[textureId];
-                    coordY =
-                        ((float)localY / height) * heightsSerialized[textureId];
-                    textureWidth = widthsSerialized[textureId];
-                    textureHeight = heightsSerialized[textureId];
-                    float sinRot = sin((PI / 180) * (float)textureRot);
-                    float cosRot = cos((PI / 180) * (float)textureRot);
+                } else {
+                  coordX =
+                      ((float)localX / width) * widthsSerialized[textureId];
+                  coordY =
+                      ((float)localY / height) * heightsSerialized[textureId];
+                  textureWidth = widthsSerialized[textureId];
+                  textureHeight = heightsSerialized[textureId];
+                  float sinRot = sin((PI / 180) * (float)textureRot);
+                  float cosRot = cos((PI / 180) * (float)textureRot);
 
-                    if (sinRot < -0.001 || cosRot < -0.001) {
-                      coordX++;
-                      coordY++;
-                    }
-
-                    int coordXtmp = coordX;
-                    int coordYtmp = coordY;
-                    coordX =
-                        (sinRot *
-                             (coordY - (heightsSerialized[textureId] / 2)) +
-                         cosRot * (coordX - (widthsSerialized[textureId] / 2)) +
-                         widthsSerialized[textureId] / 2);
-                    coordY =
-                        (sinRot *
-                             (coordXtmp - (widthsSerialized[textureId] / 2)) +
-                         cosRot *
-                             (coordY - (heightsSerialized[textureId] / 2)) +
-                         heightsSerialized[textureId] / 2);
-
-                    colort = read_imagef(
-                        textures, sampler,
-                        (int2)(coordX + uvSerialized[textureId], coordY));
+                  if (sinRot < -0.001 || cosRot < -0.001) {
+                    coordX++;
+                    coordY++;
                   }
-                  if (colort.w == 0) {
-                    continue;
-                  }
-                  *dist = dist2;
-                  *intersectionRet = intersection;
-                  *objindex = i2;
-                  *normal = n2;
-                  *face = k2;
-                  *color = colort;
+
+                  int coordXtmp = coordX;
+                  int coordYtmp = coordY;
+                  coordX =
+                      (sinRot * (coordY - (heightsSerialized[textureId] / 2)) +
+                       cosRot * (coordX - (widthsSerialized[textureId] / 2)) +
+                       widthsSerialized[textureId] / 2);
+                  coordY =
+                      (sinRot * (coordXtmp - (widthsSerialized[textureId] / 2)) +
+                       cosRot * (coordY - (heightsSerialized[textureId] / 2)) +
+                       heightsSerialized[textureId] / 2);
+
+                  colort = read_imagef(
+                      textures, sampler,
+                      (int2)(coordX + uvSerialized[textureId], coordY));
                 }
-            }
+                if (colort.w == 0) {
+                  continue;
+                }
+                *dist = dist2;
+                *intersectionRet = intersection;
+                *objindex = i2;
+                *normal = n2;
+                *face = k2;
+                *color = colort;
+              }
           }
         } else {
           // rayToObject((int)(bvhSerialized[o]), indicesSquared,
