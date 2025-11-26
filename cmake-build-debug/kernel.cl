@@ -1031,7 +1031,7 @@ inline void indirectRay(
                                p = np;
                            }
                             if(false)
-                                    printf("%d\n", inside);
+                                    //printf("%d\n", inside);
                            if(inside){
                                //*intersected = true;
 
@@ -1477,7 +1477,7 @@ __kernel void renderPixel(
             totalIndirectColor /= (validDirectionsIR+1);
         }
     }
-    if(x == width/2 && y == height/2 && false){
+    /*if(x == width/2 && y == height/2 && false){
         printf("%f, %f, %f, %f, %f, %f\n",
         irLighting[6*(y*width + x) + 0],
         irLighting[6*(y*width + x) + 1],
@@ -1486,7 +1486,7 @@ __kernel void renderPixel(
         irLighting[6*(y*width + x) + 4],
         irLighting[6*(y*width + x) + 5]
         );
-    }
+    }*/
     irLighting[6*(y*width + x) + 0] = totalIndirectColor.x;
     irLighting[6*(y*width + x) + 1] = totalIndirectColor.y;
     irLighting[6*(y*width + x) + 2] = totalIndirectColor.z;
@@ -1506,7 +1506,7 @@ __kernel void renderPixel(
 
 
     if(x == width/2 && y == height/2){
-        printf("%f\n", length(totalIndirectColor2));
+        //printf("%f\n", length(totalIndirectColor2));
         //if(length(indirectColor3) > 0.5)
             //printf("%f %f %f | %f %f %f | %f %f %f | %f %f %f | %f\n", sampleDirWorld.x, sampleDirWorld.y, sampleDirWorld.z, hemisphere.x, hemisphere.y, hemisphere.z, inter.x + pos.x, inter.y + pos.y, inter.z + pos.z, n.x, n.y, n.z, length(indirectColor3));
         irResults[0] = fabs(length(totalIndirectColor) - length(totalIndirectColor2));

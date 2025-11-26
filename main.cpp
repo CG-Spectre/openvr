@@ -18,8 +18,8 @@
 
 int width, height;
 int main(int argc, char* argv[]) {
-    bool controlserver = true;
-    bool useReflectDir = true;
+    bool controlserver = false;
+    bool useReflectDir = false;
     Vector3d reflectDir = Vector3d(0, 0, 0);
     Vector3d reflectDir1 = Vector3d(0, 0, 0);
     Vector3d reflectDir2 = Vector3d(0, 0, 0);
@@ -185,6 +185,7 @@ int main(int argc, char* argv[]) {
             rotationalVelocity.x -= 10;
         }
         if (kb[SDL_SCANCODE_W]) {
+            //std::cout << "pressed w" << std::endl;
             forward += 1/fps;
             //cam.getPos()->setTranslation(Vector3d(cam.getPos()->pose.x, cam.getPos()->pose.y, cam.getPos()->pose.z + 1/fps));
         }

@@ -95,7 +95,7 @@ void camera::setReflectDir(Vector3d *direction, Vector3d *direction1, Vector3d *
     this->reflectDir1 = direction1;
     this->reflectDir2 = direction2;
     this->reflectDir3 = direction2;
-    this->useReflectDir = true;
+    this->useReflectDir = false;
 }
 
 void camera::render(SDL_Renderer * renderer, Vector3d translationalVelocity, Vector3d rotational_velocity) {
