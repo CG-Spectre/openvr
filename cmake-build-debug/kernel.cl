@@ -1268,7 +1268,7 @@ __kernel void renderPixel(
     __global float* raysIn,
     const int raysInAmt
 ){
-
+//asdasd
 
     int x = get_global_id(0);
     int y = get_global_id(1);
