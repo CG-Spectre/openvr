@@ -1416,6 +1416,19 @@ __kernel void renderPixel(
     float4 indirectColorR = (float4)(0, 0, 0, 0);
     float indirectDistR = 1000000000;
     float3 totalIndirectColor = calcIL(indicesSquared, indicesOfIndices, allObjectsSerialized, allIndicesSerialized, isSize, iiSize, aosSize, aisSize, bvhSerialized, bvhIndices, bvhSize, bvhIndicesSize, pos, inter, direction, &indirectInter, &indirectColorR, &indirectDistR, x, y, width, height, sampler, textures, widthsSerialized, heightsSerialized, uvSerialized, texturesSerialized, textureIndices, &indirectIndex, &indirectFace, &indirectNormal, face, lightsSize, lightsSerialized, kd, (float4)(ambient.x, ambient.y, ambient.z, 1), albedo, hemisphere, &sampleDirsWorld, rays, shininess);
+    // Always include a deterministic bounce along the perfect reflection direction so the
+    // first-hit surface gets lighting from the surface the bounce lands on.
+    float3 reflectedDir = normalize(reflect(direction, hemisphere));
+    float4 bounceColor = (float4)(0, 0, 0, 0);
+    float bounceDist = 1000000000;
+    indirectRay(indicesSquared, indicesOfIndices, allObjectsSerialized, allIndicesSerialized, isSize, iiSize, aosSize, aisSize, bvhSerialized, bvhIndices, bvhSize, bvhIndicesSize, pos, inter, reflectedDir, &indirectInter, &bounceColor, &bounceDist, x, y, width, height, sampler, textures, widthsSerialized, heightsSerialized, uvSerialized, texturesSerialized, textureIndices, &indirectIndex, &indirectFace, &indirectNormal, face, lightsSize, lightsSerialized, kd, (float4)(ambient.x, ambient.y, ambient.z, 1), albedo);
+    if (!isnan(bounceColor.x)) {
+        float3 bounceRadiance = (float3)(bounceColor.x, bounceColor.y, bounceColor.z);
+        float bounceFalloff = 1.0f / max((4.0f * PI * bounceDist * bounceDist), 1.0f);
+        // Weight the contribution by how aligned the reflection is with the surface normal.
+        float bounceWeight = max(dot(hemisphere, reflectedDir), 0.0f);
+        totalIndirectColor += bounceRadiance * bounceFalloff * bounceWeight;
+    }
     if(time > 1){
         int blurOffsetIR = 2;
         int modifiedBlurOffsetIR = min((((float)blurOffsetIR)/(dist/10)), 7.0f);
