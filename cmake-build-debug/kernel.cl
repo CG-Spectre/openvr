@@ -93,6 +93,8 @@ __kernel void mapTexture(const float yaw, const float pitch, const float roll,
     // image[vy*width + vx] = (uchar4)(0, 0, 255, 255);
   }
 }
+
+}
 __kernel void fillTexture(const int width, const int height,
                           __global uchar4 *image) {
   int x = get_global_id(0);
@@ -1146,9 +1148,6 @@ inline void indirectRay(
   // allIndicesSerialized, isSize, aosSize, aisSize, index, face, pos, pos2,
   // light1, &shadowOut);
 }
-
-}
-
 inline float3
 calcIL(__global int *indicesSquared, __global int *indicesOfIndices,
        __global float *allObjectsSerialized, __global int *allIndicesSerialized,
