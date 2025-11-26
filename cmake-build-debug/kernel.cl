@@ -1147,6 +1147,8 @@ inline void indirectRay(
   // light1, &shadowOut);
 }
 
+}
+
 inline float3
 calcIL(__global int *indicesSquared, __global int *indicesOfIndices,
        __global float *allObjectsSerialized, __global int *allIndicesSerialized,
