@@ -55,24 +55,26 @@ cube::cube(Pose3d pos, float edgeLength) {
     v7.addConnection(&v3);
     v8.addConnection(&v4);
 
+    int orangeHexId = 100000 + 0xFFA500;
+
     f1.addVertex(&v1);
     f1.addVertex(&v2);
     f1.addVertex(&v4);
     f1.addVertex(&v3);
     f1.setTextureRotation(0);
-    f1.setTextureId(8);
+    f1.setTextureId(orangeHexId);
 
     f2.addVertex(&v5);
     f2.addVertex(&v6);
     f2.addVertex(&v8);
     f2.addVertex(&v7);
-    f2.setTextureId(0);
+    f2.setTextureId(orangeHexId);
 
     f3.addVertex(&v1);
     f3.addVertex(&v2);
     f3.addVertex(&v6);
     f3.addVertex(&v5);
-    f3.setTextureId(5);
+    f3.setTextureId(orangeHexId);
     f3.setNormalMap(6);
 
     /*f4.addVertex(&v1);
@@ -83,7 +85,7 @@ cube::cube(Pose3d pos, float edgeLength) {
     f4.addVertex(&v5);
     f4.addVertex(&v1);
     f4.addVertex(&v3);
-    f4.setTextureId(5);
+    f4.setTextureId(orangeHexId);
     f4.setTextureRotation(270);
     f4.setNormalMap(6);
 
@@ -91,14 +93,14 @@ cube::cube(Pose3d pos, float edgeLength) {
     f5.addVertex(&v4);
     f5.addVertex(&v8);
     f5.addVertex(&v7);
-    f5.setTextureId(5);
+    f5.setTextureId(orangeHexId);
     f5.setNormalMap(6);
 
     f6.addVertex(&v2);
     f6.addVertex(&v4);
     f6.addVertex(&v8);
     f6.addVertex(&v6);
-    f6.setTextureId(5);
+    f6.setTextureId(orangeHexId);
     f6.setTextureRotation(270);
     f6.setNormalMap(6);
 
