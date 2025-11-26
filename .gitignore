@@ -1,6 +1,5 @@
 cmake-build-debug/*
 .idea/*
-/cmake-build-debug
 /.idea
 !cmake-build-debug/kernel.cl
 !cmake-build-debug/models
