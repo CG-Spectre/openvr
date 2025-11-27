@@ -12,6 +12,7 @@ link_libraries(${GLEW_LIBRARY})
 find_package(OpenCL REQUIRED)
 find_package(OpenGL REQUIRED)
 include_directories(${OpenCL_INCLUDE_DIRS})
+include_directories(${CMAKE_SOURCE_DIR}/src ${CMAKE_SOURCE_DIR}/src/render ${CMAKE_SOURCE_DIR}/src/app)
 add_executable(openvr main.cpp
         render/renderStack.cpp
         render/renderStack.h
@@ -62,6 +63,17 @@ add_executable(openvr main.cpp
         render/3d/light.h
         render/3d/model.cpp
         render/3d/model.h
+        src/app/window.cpp
+        src/app/window.h
+        src/app/input_controller.cpp
+        src/app/input_controller.h
+        src/render/scene.cpp
+        src/render/scene.h
+        src/render/scene_loader.cpp
+        src/render/scene_loader.h
+        src/render/raytracer.cpp
+        src/render/raytracer.h
+        src/render/renderer.h
         pipe_server.cpp
         pipe_server.h
         render/GPU/ml.cpp

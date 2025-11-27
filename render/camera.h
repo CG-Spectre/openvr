@@ -10,6 +10,7 @@
 #include "../Pose3d.h"
 #include "3d/BVHNode.h"
 #include "3d/light.h"
+#include "scene.h"
 
 
 class camera : public renderable {
@@ -25,6 +26,7 @@ public:
     void init();
     void render(SDL_Renderer * renderer, Vector3d vector3d, Vector3d rotational_velocity) override;
     void setReflectDir(Vector3d* direction, Vector3d* direction1, Vector3d* direction2, Vector3d* direction3);
+    void setScene(Scene* sceneRef);
     struct indirectLightingResult{
         float radiance;
         float interX;
@@ -50,6 +52,8 @@ private:
     renderStack stack;
     renderStack lightStack;
     std::vector<light *> lights;
+    Scene* scene = nullptr;
+    BVHNode* sceneBVH = nullptr;
     bool useReflectDir = false;
     Vector3d *reflectDir;
     Vector3d *reflectDir1;

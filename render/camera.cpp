@@ -47,6 +47,21 @@ void camera::addLight(light *object) {
     this->lights.push_back(object);
 }
 
+void camera::setScene(Scene *sceneRef) {
+    if (scene == sceneRef) {
+        return;
+    }
+    scene = sceneRef;
+    sceneBVH = sceneRef ? &sceneRef->getRootBVH() : nullptr;
+    if (sceneRef) {
+        this->stack = renderStack();
+        for (auto *object : sceneRef->getObjectPointers()) {
+            this->stack.push(new renderNode(object));
+        }
+        this->lights = sceneRef->getLightPointers();
+    }
+}
+
 
 
 Pose3d* camera::getPos() {
@@ -120,6 +135,9 @@ void camera::render(SDL_Renderer * renderer, Vector3d translationalVelocity, Vec
 
     //cl::CommandQueue queue(gpu::context, gpu::device);
     //serialize and format all objects in the scene
+    if (scene) {
+        this->lights = scene->getLightPointers();
+    }
     renderStack stack2 = this->stack;
     std::vector<int> indicesSquared;
     std::vector<int> indicesOfIndices;
@@ -156,8 +174,9 @@ void camera::render(SDL_Renderer * renderer, Vector3d translationalVelocity, Vec
 
     //std::cout << rootBVH.getRectBounds(minPos, maxPos)[0].x << ", " << rootBVH.getRectBounds(minPos, maxPos)[0].y << ", " << rootBVH.getRectBounds(minPos, maxPos)[0].z << std::endl;
     //std::cout << rootBVH.getRectBounds(minPos, maxPos)[1].x << ", " << rootBVH.getRectBounds(minPos, maxPos)[1].y << ", " << rootBVH.getRectBounds(minPos, maxPos)[1].z << std::endl;
-    rootBVH.getRectBounds(minPos, maxPos);
-    SerializedBVH rootSer = rootBVH.serialize();
+    BVHNode* activeBVH = sceneBVH ? sceneBVH : &rootBVH;
+    activeBVH->getRectBounds(minPos, maxPos);
+    SerializedBVH rootSer = activeBVH->serialize();
 
 
     //end of serialization
